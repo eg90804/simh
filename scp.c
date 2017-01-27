@@ -247,8 +247,6 @@
 
 #ifdef OPCON
 #include "PDP11/opcon.h"
-#ifndef USE_ASYNC_IO
-extern uint8 oc_active;
 #endif
 
 #ifndef MAX
@@ -1260,6 +1258,9 @@ static const char simh_help[] =
 #define HLP_SHOW_ON             "*Commands SHOW"
 #define HLP_SHOW_SEND           "*Commands SHOW"
 #define HLP_SHOW_EXPECT         "*Commands SHOW"
+#ifdef OPCON
+#define HLP_SHOW_OC             "*Commands SHOW"
+#endif
 #define HLP_HELP                "*Commands HELP"
        /***************** 80 character line width template *************************/
       "2HELP\n"
@@ -1773,28 +1774,6 @@ ASSERT      failure have several different actions:
 #define HLP_EXIT        "*Commands Exiting_The_Simulator"
       "2Exiting The Simulator\n"
       " EXIT (synonyms QUIT and BYE) returns control to the operating system.\n"
-#ifdef OPCON
-#define HLP_SHOW_OC     "*Commands SHOW"
-      "2HELP\n"
-      "+h{elp}                      type this message\n"
-      "+h{elp} <command>            type help for command\n"
-      "+h{elp} <dev>                type help for device\n"
-      "+h{elp} <dev> attach         type help for device specific ATTACH command\n"
-      "+h{elp} <dev> set            type help for device specific SET commands\n"
-      "+h{elp} <dev> show           type help for device specific SHOW commands\n"
-      "+h{elp} <dev> <command>      type help for device specific <command> command\n"
-       /***************** 80 character line width template *************************/
-      "2Altering The Simulated Configuration\n"
-      " In most simulators, the SET <device> DISABLED command removes the\n"
-      " specified device from the configuration.  A DISABLED device is invisible\n"
-      " to running programs.  The device can still be RESET, but it cannot be\n"
-      " ATTAChed or DETACHed.  SET <device> ENABLED restores a disabled\n"
-      " device to a configuration.\n\n"
-      " Most multi-unit devices allow units to be enabled or disabled:\n\n"
-      "++SET <unit> ENABLED\n"
-      "++SET <unit> DISABLED\n\n"
-      " When a unit is disabled, it will not be displayed by SHOW DEVICE.\n\n"
-#endif
        /***************** 80 character line width template *************************/
 #define HLP_SCREENSHOT  "*Commands Screenshot_Video_Window"
       "2Screenshot Video Window\n"
@@ -2012,20 +1991,6 @@ t_bool lookswitch;
 t_stat stat;
 
 
-#if defined(USE_ASYNC_IO) && defined(OPCON)
-pthread_t oc_thread;
-const char *message="OC thread";
-int oc_end=0, oc_ret;
-
-if ((oc_ret = pthread_create( &oc_thread, NULL, oc_service, &oc_end)) != 0) {
-  fprintf(stderr, "Error creating OC thread, return code %d\n", oc_ret);
-  exit (EXIT_FAILURE);
-  }
-#ifdef OPCON_DEBUG
-printf("Created thread, return code %d\n", oc_ret);
-#endif
-#endif
-
 #if defined (__MWERKS__) && defined (macintosh)
 argc = ccommand (&argv);
 #endif
@@ -2172,12 +2137,6 @@ sim_cleanup_sock ();                                    /* cleanup sockets */
 fclose (stdnul);                                        /* close bit bucket file handle */
 free (targv);                                           /* release any argv copy that was made */
 
-#if defined(USE_ASYNC_IO) && defined(OPCON)
-  oc_end = 1;
-  if (pthread_join(oc_thread, NULL))
-    printf("\r\nError joining oc_thread.\r\n");
-#endif
-
 return 0;
 }
 
@@ -2275,8 +2234,7 @@ return cmdp;
 t_stat exit_cmd (int32 flag, CONST char *cptr)
 {
 #ifdef OPCON
-if (oc_active)
-  oc_detach((UNIT *)0);
+oc_detach((UNIT *)0);
 #endif
 return SCPE_EXIT;
 }
@@ -6577,47 +6535,27 @@ do {
 #ifdef OPCON
         /* Set RUN light on or off, other leds too, depending on model */
       if (oc_halt_status() == TRUE) {
-	if (oc_active) {
           r = SCPE_STOP;
-          oc_send_cmd('a');
-          switch (cpu_model) {
-            case MOD_1105: oc_port1(FSTS_RUN, 0);
-                           break;
-            case MOD_1120: oc_port1(FSTS_RUN, 0);
-                           break;
-            case MOD_1140: oc_port1(FSTS_1140_CONSOLE, 1);
-                           oc_port1(FSTS_RUN, 0);
-                           break;
-            case MOD_1145: oc_port1(FSTS_RUN, 0);
-                           oc_port1(FSTS_1145_PAUSE, 1);
-                           break;
-            case MOD_1170: oc_port1(FSTS_RUN, 0);
-                           oc_port1(FSTS_1170_PAUSE, 1);
-                           break;
-            default      : break;
-            }
-          }
+          oc_toggle_clear();
+          if (cpu_model == MOD_1145) {
+              oc_set_port1(FSTS_RUN, 0);
+              oc_set_port1(FSTS_1145_PAUSE, 1);
+              }
+          else {
+              oc_set_port1(FSTS_RUN, 0);
+              oc_set_port1(FSTS_1170_PAUSE, 1);
+              }
 	}
       else  {
-	if (oc_active) {
-          switch (cpu_model) {
-            case MOD_1105: oc_port1(FSTS_RUN, 1);
-                           break;
-            case MOD_1120: oc_port1(FSTS_RUN, 1);
-                           break;
-            case MOD_1140: oc_port1(FSTS_1140_CONSOLE, 0);
-                           oc_port1(FSTS_RUN, 1);
-                           break;
-            case MOD_1145: oc_port1(FSTS_RUN, 1);
-                           oc_port1(FSTS_1145_PAUSE, 0);
-                           break;
-            case MOD_1170: oc_port1(FSTS_RUN, 1);
-                           oc_port1(FSTS_1170_PAUSE, 0);
-                           break;
-            default      : break;
-            }
-	  }
-        r = sim_instr();
+          if (cpu_model == MOD_1145) {
+              oc_set_port1(FSTS_RUN, 1);
+              oc_set_port1(FSTS_1145_PAUSE, 0);
+              }
+          else {
+              oc_set_port1(FSTS_RUN, 1);
+              oc_set_port1(FSTS_1170_PAUSE, 0);
+              }
+          r = sim_instr();
         }
 #else
         r = sim_instr();
