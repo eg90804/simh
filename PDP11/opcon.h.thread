@@ -40,8 +40,6 @@
 
 //#define DEBUG_OC 1 				/* enable/disable debug */
 
-#define OC_THREADING
-
 #ifndef MOD_1145                
 #define MOD_1145	10
 #endif
@@ -106,20 +104,20 @@
 
 /* OC controlblock */
 struct OC_ST {
-  t_bool first_exam;		/* flag: first EXAM action */
-  t_bool first_dep;		/* flag: first DEP action */
-  t_bool ind_addr;		/* flag: indirect data access */
-  t_bool inv_addr;		/* flag: invalid address (out of range )*/
-  uint32 act_addr;		/* used address for EXAM/DEP */
-  uint8  HALT;			/* HALT switch modes */
-  uint8  PORT1;			/* status register 1 */
-  uint8  PORT2;			/* status register 2 */
-  uint32 A[10];			/* Address Mux array */
-  uint16 D[5];			/* Data Mux array */
-  uint8  S[5];			/* switches and toggles retrieved state */
-#ifndef OC_THREADING
-  uint32 resched;		/* oc_svc timing */
-  uint8  c_rot;			/* rotation switch update counter */
+  t_bool    first_exam;		/* flag: first EXAM action */
+  t_bool    first_dep;		/* flag: first DEP action */
+  t_bool    ind_addr;		/* flag: indirect data access */
+  t_bool    inv_addr;		/* flag: invalid address (out of range )*/
+  uint32    act_addr;		/* used address for EXAM/DEP */
+  uint8     HALT;		/* HALT switch modes */
+  uint8     PORT1;		/* status register 1 */
+  uint8     PORT2;		/* status register 2 */
+  uint32    A[10];		/* Address Mux array */
+  uint16    D[5];		/* Data Mux array */
+  uint8     S[5];		/* switches and toggles retrieved state */
+#if defined(SIM_ASYNC_IO)
+  pthread_t t_thr;		/* oc_svc timing */
+  int       t_end;		/* rotation switch update counter */
 #endif
   };
 typedef struct OC_ST OC_ST;
@@ -139,7 +137,7 @@ struct SERPORT {
 extern uint32 cpu_model;
 extern OC_ST oc_ctl;
 
-#ifdef OC_THREADING
+#if defined(SIM_ASYNC_IO)
 int pthread_create(pthread_t *a, CONST pthread_attr_t *b, void *(*c)(void*), void *d);
 int pthread_join(pthread_t a, void **d);
 #endif
@@ -156,29 +154,30 @@ t_stat oc_show (FILE *st, UNIT *uptr, int32 flag, CONST void *desc);
 t_stat oc_svc (UNIT *uptr);
 
 /* function prototypes OC */
-void   oc_clear_halt (void);
-t_bool oc_get_CON (char *cptr);
-t_bool oc_get_HLT (void);
-int    oc_get_RTR (void);
-int    oc_get_SWR (void);
-int    oc_halt_status (void);
-t_bool oc_poll (SERHANDLE port, int amount);
-uint32 oc_read_A (void);
-uint16 oc_read_D (void);
-char  *oc_read_line_p (char *prompt, char *cptr, int32 size, FILE *stream);
-void  *oc_run_thread(void *oc_end);
-void   oc_send_A (uint32 A);
-void   oc_send_AD (uint32 A, uint16 D);
-void   oc_send_ADS (void);
-void   oc_send_S (void);
-void   oc_set_master (t_bool flag);
-void   oc_set_mmu (void);
-void   oc_set_port1 (uint8 flag, t_bool action);
-void   oc_set_port2 (uint8 flag, t_bool action);
-void   oc_set_ringprot (int value);
-void   oc_set_wait (t_bool flag);
-void   oc_toggle_ack (uint8 mask);
-void   oc_toggle_clear (void);
+int     oc_check_halt (void);
+void    oc_clear_halt (void);
+void    oc_console (void);
+t_bool  oc_get_CON (char *cptr);
+t_bool  oc_get_HLT (void);
+int     oc_get_RTR (void);
+int     oc_get_SWR (void);
+t_bool  oc_poll (SERHANDLE port, int amount);
+uint32  oc_read_A (void);
+uint16  oc_read_D (void);
+char   *oc_read_line_p (char *prompt, char *cptr, int32 size, FILE *stream);
+void    oc_send_A (uint32 A);
+void    oc_send_AD (uint32 A, uint16 D);
+void    oc_send_ADS (void);
+void    oc_send_S (void);
+void    oc_set_master (t_bool flag);
+void    oc_set_mmu (void);
+void    oc_set_port1 (uint8 flag, t_bool action);
+void    oc_set_port2 (uint8 flag, t_bool action);
+void    oc_set_ringprot (int value);
+void    oc_set_wait (t_bool flag);
+void   *oc_thread(void *end_thr);
+void    oc_toggle_ack (uint8 mask);
+void    oc_toggle_clear (void);
 
 #endif /* OC_DEFS */
 

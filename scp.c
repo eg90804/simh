@@ -6349,7 +6349,7 @@ UNIT *uptr;
 GET_SWITCHES (cptr);                                    /* get switches */
 sim_step = 0;
 #ifdef OPCON
-if (((flag == RU_RUN) || (flag == RU_GO)) && oc_halt_status() == FALSE){ /* run or go */
+if (((flag == RU_RUN) || (flag == RU_GO)) && oc_check_halt () == FALSE){ /* run or go */
 #else
 if ((flag == RU_RUN) || (flag == RU_GO)) {              /* run or go */
 #endif
@@ -6441,7 +6441,7 @@ else if (flag == RU_NEXT) {                             /* next */
         sim_step = 1;
     }
 #ifdef OPCON
-else if (flag == RU_BOOT && oc_halt_status() == FALSE) {/* boot */
+else if (flag == RU_BOOT && oc_check_halt () == FALSE) {/* boot */
 #else
 else if (flag == RU_BOOT) {                             /* boot */
 #endif
@@ -6471,7 +6471,7 @@ else if (flag == RU_BOOT) {                             /* boot */
 
 else
 #ifdef OPCON
-    if ((flag != RU_CONT) && (oc_halt_status() == FALSE)) /* must be cont */
+    if ((flag != RU_CONT) && (oc_check_halt () == FALSE)) /* must be cont */
 #else
     if (flag != RU_CONT)                               /* must be cont */
 #endif
@@ -6534,31 +6534,31 @@ do {
     while (1) {
 #ifdef OPCON
         /* Set RUN light on or off, other leds too, depending on model */
-      if (oc_halt_status() == TRUE) {
+      if (oc_check_halt () == TRUE) {
           r = SCPE_STOP;
-          oc_toggle_clear();
+          oc_toggle_clear ();
           if (cpu_model == MOD_1145) {
-              oc_set_port1(FSTS_RUN, 0);
-              oc_set_port1(FSTS_1145_PAUSE, 1);
+              oc_set_port1 (FSTS_RUN, 0);
+              oc_set_port1 (FSTS_1145_PAUSE, 1);
               }
           else {
-              oc_set_port1(FSTS_RUN, 0);
-              oc_set_port1(FSTS_1170_PAUSE, 1);
+              oc_set_port1 (FSTS_RUN, 0);
+              oc_set_port1 (FSTS_1170_PAUSE, 1);
               }
 	}
       else  {
           if (cpu_model == MOD_1145) {
-              oc_set_port1(FSTS_RUN, 1);
-              oc_set_port1(FSTS_1145_PAUSE, 0);
+              oc_set_port1 (FSTS_RUN, 1);
+              oc_set_port1 (FSTS_1145_PAUSE, 0);
               }
           else {
-              oc_set_port1(FSTS_RUN, 1);
-              oc_set_port1(FSTS_1170_PAUSE, 0);
+              oc_set_port1 (FSTS_RUN, 1);
+              oc_set_port1 (FSTS_1170_PAUSE, 0);
               }
-          r = sim_instr();
+          r = sim_instr ();
         }
 #else
-        r = sim_instr();
+        r = sim_instr ();
 #endif
         if (r != SCPE_REMOTE)
             break;

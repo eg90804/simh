@@ -46,16 +46,16 @@
  * oc_svc()			: service routine
  *
  * OPCON routines
- * oc_clear_halt()		: clear halt mode
+ * oc_check_halt()              : check halt mode status
+ * oc_clear_halt()		: clear halt mode status
+ * oc_console()			: shared service for oc_svc and oc_thread
  * oc_get_CON()			: get function command
  * oc_get_HLT()			: get halt status (HALT key down)
  * oc_get_RTR()			: get rotary knob settings
  * oc_get_SWR()			: get switch & knob settings from console
- * oc_halt_status()             : check halt mode status
  * oc_poll()			: pool input channel for data ready
  * oc_read_A()			: read address from swr data array
  * oc_read_D()			: read data from swr data array
- * oc_run_thread()		: threading service routine 
  * oc_send_A()			: send address data
  * oc_send_AD()			: combined send address & data
  * oc_send_ADS()		: send address/data/status
@@ -66,6 +66,7 @@
  * oc_set_port2()		: toggle bit on/off in port2 flagbyte
  * oc_set_ringprot()		: toggle ring protection bits (USK)
  * oc_set_wait()		: toggle wait mode led
+ * oc_thread()			: threading service routine 
  * oc_toggle_ack()		: acknoledge a state on the console processor
  * oc_toggle_clear()		: clear all states on the console processor
  *
@@ -165,11 +166,6 @@ extern int32 MMR0, MMR3;		/* MMU registers */
 /* Global declarations for the OC device */
 OC_ST oc_ctl;				/* OC device control block */
 
-#ifdef OC_THREADING
-pthread_t oc_th;
-int	  oc_end = 0;
-#endif
-
 /* Debug flags & keywords for the OC device */
 DEBTAB oc_debug[] = {
     { "CON", OCDEB_CON },		/* used in oc_get_CON */
@@ -187,8 +183,7 @@ UNIT oc_unit = { UDATA (&oc_svc, UNIT_ATTABLE + UNIT_DISABLE + UNIT_DIS + UNIT_T
 
 /* Modifiers definitions */
 MTAB oc_mod[] = { 
-/*    { MTAB_XTD|MTAB_VDV|MTAB_NMO, 0, "STATUS", NULL, */
-    { MTAB_XTD|MTAB_VUN|MTAB_NMO, 0, "STATUS", NULL,
+    { MTAB_XTD|MTAB_VDV|MTAB_NMO, 0, "STATUS", NULL,
         NULL, &oc_show, NULL, "Display console link status" },
     { 0 } 
     };	
@@ -246,9 +241,6 @@ char *cmdp, *tptr;
 uint32 H, K;
 t_stat r;
 SERHANDLE p;
-#ifdef OC_THREADING
-int oc_ret;
-#endif
 
 sim_debug (OCDEB_TRC, &oc_dev, "oc_attach : called\n");
 
@@ -323,9 +315,9 @@ else
     if (!sim_quiet)
 	printf ("LOCK\n");
 
-#ifdef OC_THREADING
-if ((oc_ret = pthread_create(&oc_th, NULL, oc_run_thread, &oc_end)) != 0) {
-    fprintf(stderr, "Error creating OC thread, return code %d\n", oc_ret);
+#if defined(SIM_ASYNC_IO)
+if ((r = pthread_create(&oc_ctl.t_thr, NULL, oc_thread, (void *)&oc_ctl.t_end)) != 0) {
+    fprintf(stderr, "Error creating OC thread, return code %d\n", r);
     tmxr_close_master (&oc_tmxr);	/* close the serial line too */
     return(-1);
     }
@@ -346,10 +338,10 @@ t_stat r;
 if (!oc_ldsc.rcve || !oc_ldsc.serport)		/* return if already closed */
     return SCPE_OK;
 
-#ifdef OC_THREADING
-oc_end = 1;
-usleep(250);					/* allow oc_th to flush */
-pthread_join(oc_th, NULL);		/* join, but ignore result      */
+#if defined(SIM_ASYNC_IO)
+oc_ctl.t_end = 1;
+usleep(10000);					/* allow oc_th to flush */
+pthread_join(oc_ctl.t_thr, NULL);		/* cleanup console sending thread */
 #else
 sim_cancel(&oc_unit);
 #endif
@@ -368,7 +360,7 @@ return r;
 t_stat oc_reset (DEVICE *dptr)
 {
 sim_debug (OCDEB_TRC, &oc_dev, "oc_reset : called\n");
-#ifndef OC_THREADING
+#if !defined(SIM_ASYNC_IO)
 sim_activate_after (&oc_unit, OC_INTERVAL);     /* queue service routine */
 #endif
 return SCPE_OK;
@@ -383,13 +375,13 @@ t_stat oc_svc (UNIT *uptr)
 {
 uint32 A, R;
 uint16 D;
+static uint32 resched;
 
 if (!oc_ldsc.rcve)			/* console link configured / open? */
     return FALSE;
 
-#ifndef OC_THREADING
+#if !defined(SIM_ASYNC_IO)
 sim_debug (OCDEB_TRC, &oc_dev, "oc_svc : called\n");
-
 R = sim_os_msec();
 sim_debug (OCDEB_SVC, &oc_dev, "oc_svc : delta = %d\n", R - oc_ctl.resched);
 
@@ -397,17 +389,9 @@ if ((R - oc_ctl.resched) < OC_MINVAL) {         /* sufficient time passed by? */
     sim_activate_after (uptr, OC_MINVAL);       /* reschedule */
     return 0;
     }
-oc_ctl.resched = R;                     /* set as new marker */
-
-oc_send_ADS ();
-if (oc_ctl.c_rot++ > 3) {		/* Rotary threshold reached? */
-    oc_ctl.c_rot = 0;
-    oc_get_RTR ();
-    oc_get_HLT ();			/* check for HALT key */
-    }
-
+resched = R;					/* set as new marker */
+oc_console ();
 sim_activate_after (uptr, OC_INTERVAL);         /* reschedule */
-
 #endif    
 return SCPE_OK;
 }
@@ -423,7 +407,6 @@ if (oc_ldsc.rcve)
     fputs ("active\n", st);
 else
     fputs ("not active\n", st);
-
 return SCPE_OK;
 }
 
@@ -530,6 +513,19 @@ return "OC11 : Interface to operator console processor";
 /*   ***   ***   ***   ***   OPCON routines   ***   ***   ***   ***   */
 
 /*
+ * Function : oc_check_halt()
+ * Note     : Check the value of the oc_ctl.HALT variable
+ * Returns  : 0 - if halt mode = 0 or 1
+ *          : 1 - if halt mode = 2
+ */
+int oc_check_halt (void)
+{
+if (oc_ctl.HALT == 2)
+    return(1);
+return(0);
+}
+
+/*
  * Function : oc_clear_halt()
  * Note     : Clear the halt bit in the swr array & clear all toggles
  * Returns  : Nothing
@@ -542,6 +538,34 @@ else
     oc_ctl.S[INP4] = oc_ctl.S[INP4] & (~SW_HE_1170);
 oc_toggle_clear ();
 oc_ctl.HALT = 0;
+}
+
+/*
+ * Function : oc_console()
+ * Note     : Shared function between oc_svr and oc_thread for
+  *           updating the console leds and reading the swr/rotary data
+ * Returns  : Nothing
+ */
+void oc_console(void)
+{
+static int c_cnt = 0;
+int H;
+
+oc_send_ADS ();
+switch(c_cnt++) {
+    default : break;
+    case  3 : oc_get_RTR (); break;     /* get rotary only */
+    case  7 : oc_get_HLT (); break;     /* het halt mode */
+    case 10 : oc_get_SWR ();            /* get all switch values */
+              if (cpu_model == MOD_1145)
+                H = oc_ctl.S[INP5] & SW_HE_1145;
+              else
+                H = oc_ctl.S[INP5] & SW_HE_1170;
+              if (H)                    /* halt switch used?    */
+                  oc_ctl.HALT = 2;      /* Yes, set it          */
+              break;
+    case 11 : c_cnt = 0;     break;
+    }
 }
 
 /*
@@ -829,19 +853,6 @@ return 0;
 }
 
 /*
- * Function : oc_halt_status()
- * Note     : Check the value of the oc_ctl.HALT variable
- * Returns  : 0 - if halt mode = 0 or 1
- *          : 1 - if halt mode = 2
- */
-int oc_halt_status (void)
-{
-if (oc_ctl.HALT == 2)
-    return(1);
-return(0);
-}
-
-/*
  * Function : oc_set_port1()
  * Note     : Toggle a single bit for port1
  * Returns  : Nothing
@@ -1042,7 +1053,7 @@ int r;
 if (!oc_ldsc.rcve)
     return;
 
-sim_debug(OCDEB_UPD, &oc_dev, "oc_send_addr_dat : A:0x%06X D:0x%04X\n", A, D);
+sim_debug(OCDEB_TRC, &oc_dev, "oc_send_AD : called\n");
 
 if (MMR0 & MMR0_MME) {
   mask = 0x03;
@@ -1057,6 +1068,7 @@ cmd[3] = (uint8) (A & 0xFF);
 cmd[4] = (uint8)((D >> 8) & 0xFF) ;
 cmd[5] = (uint8) (D & 0xFF);
 
+sim_debug(OCDEB_UPD, &oc_dev, "oc_send_AD : A:0x%06X D:0x%04X\n", A, D);
 if ((r = sim_write_serial(oc_ldsc.serport, cmd, 6)) != 6)
   printf("OC    : Error sending ADDRES & DATA to the console (e=%d, wr=%d)\n",
 	 errno, r);
@@ -1076,6 +1088,8 @@ int r;
 
 if (!oc_ldsc.rcve)
     return;
+
+sim_debug(OCDEB_TRC, &oc_dev, "oc_send_ADS : called\n");
 
 if (cpu_model == MOD_1145) {
     switch ((oc_ctl.S[INP3] >> 4) & DSPA_MASK) {
@@ -1114,8 +1128,6 @@ else {
         }
     }
 
-sim_debug(OCDEB_UPD, &oc_dev, "oc_send_ADS : A:0x%06X D:0x%04X\n", A, D);
-
 if (MMR0 & MMR0_MME) {
     mask = 0x03;
     if (MMR3 & MMR3_M22E)
@@ -1131,6 +1143,7 @@ cmd[5] = (uint8) (D & 0xFF);
 cmd[6] = oc_ctl.PORT1;
 cmd[7] = oc_ctl.PORT2;
 
+sim_debug(OCDEB_UPD, &oc_dev, "oc_send_ADS : A:0x%06X D:0x%04X\n", A, D);
 if ((r = sim_write_serial(oc_ldsc.serport, cmd, 8)) != 8)
   printf("OC    : Error sending ADDRESS/DATA & STATUS to the console (e=%d, wr=%d)\n",
 	 errno, r);
@@ -1148,13 +1161,14 @@ uint8 cmd[4];
 if (!oc_ldsc.rcve)
     return;
 
-sim_debug(OCDEB_STS, &oc_dev, "oc_send_S : raw byte1 0x%X, byte2 : 0x%X\n",
-        oc_ctl.PORT1, oc_ctl.PORT2);
+sim_debug(OCDEB_TRC, &oc_dev, "oc_send_S : called\n");
 
 cmd[0] = 'F';				/* cmd to use */
 cmd[1] = oc_ctl.PORT1;
 cmd[2] = oc_ctl.PORT2;
 
+sim_debug(OCDEB_STS, &oc_dev, "oc_send_S : raw byte1 0x%X, byte2 : 0x%X\n",
+        cmd[0], cmd[1]);
 if (sim_write_serial (oc_ldsc.serport, cmd, 3) != 3)
     printf("OC    : Error sending STATUS to the console\n");
 }
@@ -1225,36 +1239,22 @@ if (value == MD_USR) status &= 0xFF;
 oc_ctl.PORT1 = status;
 }
 
-#ifdef OC_THREADING
+#if defined(SIM_ASYNC_IO)
 /*
- * Function : oc_run_thread
+ * Function : oc_thread
  * Note     : Service routine for the threading solution
  *            If HALT is set, this service does mostly sleep.
  * Returns  : 0 or 1
 */
-void *oc_run_thread(void *oc_end)
+void *oc_thread(void *end_thr)
 {
-uint8 c_cnt = 0;
-
 sim_debug (OCDEB_TRC, &oc_dev, "oc_run_thread : called\n");
 
-while (*(int*)oc_end == 0) {
-    if (oc_ctl.HALT == 0) {		/* if 0, we are not interactive */
-        oc_send_ADS ();
-        switch(c_cnt++) {
-          default :
-          case  1 : oc_get_RTR ();
-          case  2 : break;
-          case  3 : oc_get_RTR ();
-          case  4 : break;
-          case  5 : oc_get_SWR ();
-          case  6 : break;
-          case  7 : oc_get_RTR (); break;
-          case  8 : c_cnt = 0; break;
-          }
-        if (oc_ctl.S[1] & 0x4)			/* halt switch used?    */
-            oc_ctl.HALT = 2;			/* Yes, set it          */
-        }
+while (*(int*)end_thr == 0) {
+    if (oc_ctl.HALT == 0)		/* if 0, we are not interactive */
+        oc_console ();
+    else
+        usleep(10000);			/* don't hog the cpu */
     }
 return((void *)0);
 }
@@ -1271,7 +1271,7 @@ uint8 cmd[3];
 int r;
 char *msg;
 
-sim_debug (OCDEB_TRC, &oc_dev, "oc_toggle_ack : called, mask = %d\n", mask);
+sim_debug (OCDEB_TRC, &oc_dev, "oc_toggle_ack : called, mask = 0x%x\n", mask);
 
 #ifdef DEBUG_OC
 switch (mask) {
