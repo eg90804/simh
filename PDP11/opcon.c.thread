@@ -268,7 +268,7 @@ if ((oc_tmxr.master) || (oc_ldsc.serport))		/* already open? */
 if ((r = tmxr_attach (&oc_tmxr, uptr, cptr)))		/* open the link */
     return r;
 
-memset (&oc_ctl, 0, sizeof(oc_ctl));		/* init OC control block */
+memset (&oc_ctl, 0, sizeof(OC_ST));		/* init OC control block */
 oc_ctl.first_exam = TRUE;
 oc_ctl.first_dep = TRUE;
 oc_ldsc.rcve = TRUE;				/* mark as available */
@@ -383,9 +383,9 @@ if (!oc_ldsc.rcve)			/* console link configured / open? */
 #if !defined(SIM_ASYNC_IO)
 sim_debug (OCDEB_TRC, &oc_dev, "oc_svc : called\n");
 R = sim_os_msec();
-sim_debug (OCDEB_SVC, &oc_dev, "oc_svc : delta = %d\n", R - oc_ctl.resched);
+sim_debug (OCDEB_SVC, &oc_dev, "oc_svc : delta = %d\n", R - resched);
 
-if ((R - oc_ctl.resched) < OC_MINVAL) {         /* sufficient time passed by? */
+if ((R - resched) < OC_MINVAL) {         /* sufficient time passed by? */
     sim_activate_after (uptr, OC_MINVAL);       /* reschedule */
     return 0;
     }
