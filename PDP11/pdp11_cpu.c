@@ -25,6 +25,9 @@
 
    cpu          PDP-11 CPU
 
+   04-Dec-16    RMS     Removed duplicate IDLE entries in MTAB
+   30-Aug-16    RMS     Fixed overloading of -d in ex/mod
+   14-Mar-16    RMS     Added UC15 support
    06-Mar-16    RMS     Fixed bug in history virtual addressing
    30-Dec-15    RMS     Added NOBEVENT option for 11/03, 11/23
    29-Dec-15    RMS     Call build_dib_tab during reset (Mark Pizzolato)
@@ -298,9 +301,9 @@ int32 stop_vecabort = 1;                                /* stop on vec abort */
 int32 stop_spabort = 1;                                 /* stop on SP abort */
 int32 wait_enable = 0;                                  /* wait state enable */
 int32 autcon_enb = 1;                                   /* autoconfig enable */
-uint32 cpu_model = MOD_1173;                            /* CPU model */
-uint32 cpu_type = 1u << MOD_1173;                       /* model as bit mask */
-uint32 cpu_opt = SOP_1173;                              /* CPU options */
+uint32 cpu_model = INIMODEL;                            /* CPU model */
+uint32 cpu_type = 1u << INIMODEL;                       /* model as bit mask */
+uint32 cpu_opt = INIOPTNS;                              /* CPU options */
 uint16 pcq[PCQ_SIZE] = { 0 };                           /* PC queue */
 int32 pcq_p = 0;                                        /* PC queue ptr */
 REG *pcq_r = NULL;                                      /* PC queue reg ptr */
@@ -309,7 +312,6 @@ int32 hst_p = 0;                                        /* history pointer */
 int32 hst_lnt = 0;                                      /* history length */
 InstHistory *hst = NULL;                                /* instruction history */
 int32 dsmask[4] = { MMR3_KDS, MMR3_SDS, 0, MMR3_UDS };  /* dspace enables */
-t_addr cpu_memsize = INIMEMSIZE;                        /* last mem addr */
 int16 inst_pc;                                          /* PC of current instr */
 int32 inst_psw;                                         /* PSW at instr. start */
 int16 reg_mods;                                         /* reg deltas */
@@ -589,6 +591,7 @@ REG cpu_reg[] = {
 MTAB cpu_mod[] = {
     { MTAB_XTD|MTAB_VDV, 0, "TYPE", NULL,
       NULL, &cpu_show_model },
+#if !defined (UC15)
     { MTAB_XTD|MTAB_VDV, MOD_1103, NULL, "11/03", &cpu_set_model },
     { MTAB_XTD|MTAB_VDV, MOD_1104, NULL, "11/04", &cpu_set_model },
     { MTAB_XTD|MTAB_VDV, MOD_1105, NULL, "11/05", &cpu_set_model },
@@ -625,8 +628,6 @@ MTAB cpu_mod[] = {
     { MTAB_XTD|MTAB_VDV, OPT_MMU, NULL, "NOMMU", &cpu_clr_opt },
     { MTAB_XTD|MTAB_VDV, OPT_BVT, NULL, "BEVENT", &cpu_set_opt, NULL, NULL, "Enable BEVENT line (11/03, 11/23 only)" },
     { MTAB_XTD|MTAB_VDV, OPT_BVT, NULL, "NOBEVENT", &cpu_clr_opt, NULL, NULL, "Disable BEVENT line (11/03, 11/23 only)" },
-    { MTAB_XTD|MTAB_VDV, 0, "IDLE", "IDLE", &sim_set_idle, &sim_show_idle },
-    { MTAB_XTD|MTAB_VDV, 0, NULL, "NOIDLE", &sim_clr_idle, NULL },
     { UNIT_MSIZE, 16384, NULL, "16K", &cpu_set_size},
     { UNIT_MSIZE, 32768, NULL, "32K", &cpu_set_size},
     { UNIT_MSIZE, 49152, NULL, "48K", &cpu_set_size},
@@ -647,12 +648,22 @@ MTAB cpu_mod[] = {
     { UNIT_MSIZE, 2097152, NULL, "2M", &cpu_set_size},
     { UNIT_MSIZE, 3145728, NULL, "3M", &cpu_set_size},
     { UNIT_MSIZE, 4186112, NULL, "4M", &cpu_set_size},
-    { MTAB_XTD|MTAB_VDV|MTAB_NMO, 0, "IOSPACE", NULL,
-      NULL, &show_iospace },
     { MTAB_XTD|MTAB_VDV, 1, "AUTOCONFIG", "AUTOCONFIG",
       &set_autocon, &show_autocon },
     { MTAB_XTD|MTAB_VDV, 0, NULL, "NOAUTOCONFIG",
       &set_autocon, NULL },
+#else
+    { MTAB_XTD|MTAB_VDV, MOD_1104, NULL, "11/04", &cpu_set_model },
+    { MTAB_XTD|MTAB_VDV, MOD_1105, NULL, "11/05", &cpu_set_model },
+    { MTAB_XTD|MTAB_VDV, MOD_1120, NULL, "11/20", &cpu_set_model },
+    { UNIT_MSIZE, 16384, NULL, "16K", &cpu_set_size},
+    { UNIT_MSIZE, 24576, NULL, "24K", &cpu_set_size},
+    { UNIT_MSIZE, 32768, NULL, "32K", &cpu_set_size},
+#endif
+    { MTAB_XTD|MTAB_VDV|MTAB_NMO, 0, "IOSPACE", NULL,
+      NULL, &show_iospace },
+    { MTAB_XTD|MTAB_VDV, 0, "IDLE", "IDLE", &sim_set_idle, &sim_show_idle },
+    { MTAB_XTD|MTAB_VDV, 0, NULL, "NOIDLE", &sim_clr_idle, NULL },
     { MTAB_XTD|MTAB_VDV|MTAB_NMO|MTAB_SHP, 0, "HISTORY", "HISTORY",
       &cpu_set_hist, &cpu_show_hist },
     { MTAB_XTD|MTAB_VDV|MTAB_NMO|MTAB_SHP, 0, "VIRTUAL", NULL,
@@ -706,9 +717,8 @@ sim_vm_pc_value = &pdp11_pc_value;
 reason = build_dib_tab ();                              /* build, chk dib_tab */
 if (reason != SCPE_OK)
     return reason;
-if (MEMSIZE < cpu_tab[cpu_model].maxm)                  /* mem size < max? */
-    cpu_memsize = MEMSIZE;                              /* then okay */
-else cpu_memsize = cpu_tab[cpu_model].maxm - IOPAGESIZE;/* max - io page */
+if (MEMSIZE >= (cpu_tab[cpu_model].maxm - IOPAGESIZE))  /* mem size >= max - io page? */
+    MEMSIZE = cpu_tab[cpu_model].maxm - IOPAGESIZE;     /* max - io page */
 cpu_type = 1u << cpu_model;                             /* reset type mask */
 cpu_bme = (MMR3 & MMR3_BME) && (cpu_opt & OPT_UBM);     /* map enabled? */
 PC = saved_PC;
@@ -2738,10 +2748,10 @@ if (ADDR_IS_MEM (pa))                                   /* memory address? */
 #ifdef OPCON
     {
     OC_DATA[DISP_BR] = (uint16)M[pa >> 1];             /* memory address? */
-    return (M[pa >> 1]);
+    return RdMemW (pa);
     }
 #else
-    return (M[pa >> 1]);
+    return RdMemW (pa);
 #endif
 
 if ((pa < IOPAGEBASE) ||                                /* not I/O address */
@@ -2835,10 +2845,10 @@ if (ADDR_IS_MEM (pa))                                   /* memory address? */
 #ifdef OPCON
     {
     OC_DATA[DISP_BR] = (uint16)M[pa >> 1]; 
-    return (M[pa >> 1]);
+    return RdMemW (pa);
     }
 #else
-    return (M[pa >> 1]);
+    return RdMemW (pa);
 #endif
 if (pa < IOPAGEBASE) {                                  /* not I/O address? */
     setCPUERR (CPUE_NXM);
@@ -2859,10 +2869,10 @@ if (ADDR_IS_MEM (pa))
 #ifdef OPCON
     {
       OC_DATA[DISP_BR] = (uint16)M[pa >> 1];
-      return (pa & 1? M[pa >> 1] >> 8: M[pa >> 1]) & 0377;
+      return RdMemB (pa);
     }
 #else
-    return (pa & 1? M[pa >> 1] >> 8: M[pa >> 1]) & 0377;
+    return RdMemB (pa);
 #endif
 if (pa < IOPAGEBASE) {                                  /* not I/O address? */
     setCPUERR (CPUE_NXM);
@@ -2934,7 +2944,7 @@ PWriteW (data, pa);
 void PWriteW (int32 data, int32 pa)
 {
 if (ADDR_IS_MEM (pa)) {                                 /* memory address? */
-    M[pa >> 1] = data;
+    WrMemW (pa, data);
 #ifdef OPCON
     OC_DATA[DISP_BR] = (uint16)data;
 #endif
@@ -2954,9 +2964,7 @@ return;
 void PWriteB (int32 data, int32 pa)
 {
 if (ADDR_IS_MEM (pa)) {                                 /* memory address? */
-    if (pa & 1)
-        M[pa >> 1] = (M[pa >> 1] & 0377) | (data << 8);
-    else M[pa >> 1] = (M[pa >> 1] & ~0377) | data;
+    WrMemB (pa, data);
 #ifdef OPCON
     OC_DATA[DISP_BR] = (uint16)M[pa >> 1];
 #endif
@@ -3668,8 +3676,8 @@ if (sw & SWMASK ('V')) {                                /* -v */
     if (addr >= MAXMEMSIZE)
         return SCPE_REL;
     }
-if (addr < MEMSIZE) {
-    *vptr = M[addr >> 1] & 0177777;
+if (ADDR_IS_MEM (addr)) {
+    *vptr = RdMemW (addr) & 0177777;
     return SCPE_OK;
     }
 if (addr < IOPAGEBASE)
@@ -3690,8 +3698,8 @@ if (sw & SWMASK ('V')) {                                /* -v */
     if (addr >= MAXMEMSIZE)
         return SCPE_REL;
     }
-if (addr < MEMSIZE) {
-    M[addr >> 1] = val & 0177777;
+if (ADDR_IS_MEM (addr)) {
+    WrMemW (addr, val & 0177777);
     return SCPE_OK;
     }
 if (addr < IOPAGEBASE)
