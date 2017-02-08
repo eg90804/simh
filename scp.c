@@ -6548,24 +6548,18 @@ do {
       if (oc_check_halt () == TRUE) {
           r = SCPE_STOP;
           oc_toggle_clear ();
-          if (cpu_model == MOD_1145) {
-              oc_set_port1 (FSTS_RUN, 0);
+          oc_set_port1 (FSTS_RUN, 0);
+          if (cpu_model == MOD_1145)
               oc_set_port1 (FSTS_1145_PAUSE, 1);
-              }
-          else {
-              oc_set_port1 (FSTS_RUN, 0);
+          else
               oc_set_port1 (FSTS_1170_PAUSE, 1);
-              }
 	}
       else  {
-          if (cpu_model == MOD_1145) {
-              oc_set_port1 (FSTS_RUN, 1);
+          oc_set_port1 (FSTS_RUN, 1);
+          if (cpu_model == MOD_1145)
               oc_set_port1 (FSTS_1145_PAUSE, 0);
-              }
-          else {
-              oc_set_port1 (FSTS_RUN, 1);
+          else
               oc_set_port1 (FSTS_1170_PAUSE, 0);
-              }
           r = sim_instr ();
         }
 #else

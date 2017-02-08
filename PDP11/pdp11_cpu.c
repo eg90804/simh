@@ -731,9 +731,6 @@ dsenable = calc_ds (cm);
 put_PIRQ (PIRQ);                                        /* rewrite PIRQ */
 STKLIM = STKLIM & STKLIM_RW;                            /* clean up STKLIM */
 MMR0 = MMR0 | MMR0_IC;                                  /* usually on */
-#ifdef OPCON
-OC_MMR0;
-#endif
 
 trap_req = calc_ints (ipl, trap_req);                   /* upd int req */
 trapea = 0;
@@ -757,6 +754,7 @@ reason = 0;
 */
 
 #ifdef OPCON
+OC_MMR0;
 if (cpu_model == MOD_1145) {
     oc_set_port1(FSTS_1145_ADRSERR, 0);
     abortval = setjmp (save_env);                           /* set abort hdlr */
