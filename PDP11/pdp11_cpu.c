@@ -755,6 +755,23 @@ reason = 0;
 
 #ifdef OPCON
 OC_MMR0;
+if (oc_check_halt () == TRUE) {^M
+    oc_toggle_clear ();^M
+    oc_set_port1 (FSTS_RUN, 0);^M
+    if (cpu_model == MOD_1145)^M
+        oc_set_port1 (FSTS_1145_PAUSE, 1);^M
+    else
+        oc_set_port1 (FSTS_1170_PAUSE, 1);^M
+    return(SCPE_STOP);^M
+    }
+else  {^M
+    oc_set_port1 (FSTS_RUN, 1);^M
+    if (cpu_model == MOD_1145)
+        oc_set_port1 (FSTS_1145_PAUSE, 0);^M
+    else
+        oc_set_port1 (FSTS_1170_PAUSE, 0);^M
+    }^M
+
 if (cpu_model == MOD_1145) {
     oc_set_port1(FSTS_1145_ADRSERR, 0);
     abortval = setjmp (save_env);                           /* set abort hdlr */

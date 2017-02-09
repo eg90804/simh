@@ -6543,7 +6543,7 @@ do {
     t_addr *addrs;
 
     while (1) {
-#ifdef OPCON
+#ifdef OPCON000
         /* Set RUN light on or off, other leds too, depending on model */
       if (oc_check_halt () == TRUE) {
           r = SCPE_STOP;
