@@ -24,10 +24,10 @@
    dealings in this Software without prior written authorization from the
    author(s).
 
-   17-jan-17	EG	3 versions : direct serial, shm & threading
-   27-apr-16    EG      Rewrote, consoletask is now a separate process
-   20-mar-14    EG      new oc_svc, oc_get_rotary, minor changes
-   08-feb-14    EG      Rewrite of original realcons.c & adapted for simh 4.0 
+   17-jan-17  EG  3 versions : direct serial, shm & threading
+   27-apr-16  EG  Rewrote, consoletask is now a separate process
+   20-mar-14  EG  new oc_svc, oc_get_rotary, minor changes
+   08-feb-14  EG  Rewrite of original realcons.c & adapted for simh 4.0 
 */
 
 #ifndef OC_DEFS
@@ -40,11 +40,14 @@
 
 //#define DEBUG_OC 1 				/* enable/disable debug */
 
+#define OPCON_ASYNC 1				/* use thread model */
+//#define OPCON_SHM 1 				/* use shm model */
+
 #ifndef MOD_1145                
-#define MOD_1145	10
+#define MOD_1145 10
 #endif
 #ifndef MOD_1170
-#define MOD_1170	12
+#define MOD_1170 12
 #endif
 
 /* Shared function/status port LEDs definitions */
@@ -115,7 +118,7 @@ struct OC_ST {
   uint32    A[10];		/* Address Mux array */
   uint16    D[5];		/* Data Mux array */
   uint8     S[5];		/* switches and toggles retrieved state */
-#if defined(SIM_ASYNC_IO)
+#if defined(OPCON_ASYNC)
   pthread_t t_thr;		/* oc_svc timing */
   int       t_end;		/* rotation switch update counter */
 #endif
@@ -125,8 +128,6 @@ typedef struct OC_ST OC_ST;
 #define OC_ADDR oc_ctl.A
 #define OC_DATA oc_ctl.D
 #define OC_IA   oc_ctl.ind_addr
-#define OC_MMR0
-#define OC_MMR3
 #define OC_INTERVAL 3000	/* in micro sec */
 #define OC_MINVAL 10000		/* in micro sec */
 
@@ -137,7 +138,7 @@ struct SERPORT {
 extern uint32 cpu_model;
 extern OC_ST oc_ctl;
 
-#if defined(SIM_ASYNC_IO)
+#if defined(OPCON_ASYNC)
 int pthread_create(pthread_t *a, CONST pthread_attr_t *b, void *(*c)(void*), void *d);
 int pthread_join(pthread_t a, void **d);
 #endif
@@ -164,7 +165,7 @@ int     oc_get_SWR (void);
 t_bool  oc_poll (SERHANDLE port, int amount);
 uint32  oc_read_A (void);
 uint16  oc_read_D (void);
-char   *oc_read_line_p (char *prompt, char *cptr, int32 size, FILE *stream);
+char   *oc_read_line_p (char *prompt, char *cptr, int32 size, FILE *stream, int32 do_echo);
 void    oc_send_A (uint32 A);
 void    oc_send_AD (uint32 A, uint16 D);
 void    oc_send_ADS (void);

@@ -24,10 +24,10 @@
    dealings in this Software without prior written authorization from the
    author(s).
 
-   17-jan-17    EG      3 versions : direct serial, shm & threading
-   27-apr-16    EG      Rewrote, consoletask is now a separate process
-   20-mar-14    EG      new oc_svc, oc_get_rotary, minor changes
-   08-feb-14    EG      Rewrite of original realcons.c & adapted for simh 4.0 
+   17-jan-17  EG  3 versions : direct serial, shm & threading
+   27-apr-16  EG  Rewrote, consoletask is now a separate process
+   20-mar-14  EG  new oc_svc, oc_get_rotary, minor changes
+   08-feb-14  EG  Rewrite of original realcons.c & adapted for simh 4.0 
 */
 
 #ifndef OC_DEFS
@@ -40,11 +40,11 @@
 
 //#define DEBUG_OC 1 				/* enable/disable debug */
 
-#ifndef MOD_1145                
-#define MOD_1145	10
+#ifndef MOD_1145
+#define MOD_1145 10
 #endif
-#ifndef MOD_1170                
-#define MOD_1170	12
+#ifndef MOD_1170
+#define MOD_1170 12
 #endif
 
 /* Shared function/status port LEDs definitions */
@@ -103,7 +103,7 @@
 #define ADDR_CONPA	9	/* Cons PA  */
 
 /* OC controlblock */
-struct oc_st {
+struct OC_ST {
   t_bool first_exam;		/* flag: first EXAM action */
   t_bool first_dep;		/* flag: first DEP action */
   t_bool ind_addr;		/* flag: indirect data access */
@@ -119,16 +119,15 @@ struct oc_st {
   uint8	 cpu_model;		/* cpu model */
   uint8  OUT;			/* cmd from console task */
   uint8  IN;			/* cmd to   console task */
-  int32  MMR0;			/* MMU register 0 */
-  int32  MMR3;			/* MMU register 3 */
+  int32  *MMR0;			/* pointer to MMU register 0 */
+  int32  *MMR3;			/* pointer to MMU register 3 */
   uint8  ACK[3];		/* ack toggle data */
   };
-typedef struct oc_st oc_st;
+typedef struct OC_ST OC_ST;
+
 #define OC_ADDR if (oc_active) ocp->A
 #define OC_DATA if (oc_active) ocp->D
 #define OC_IA   if (oc_active) ocp->ind_addr
-#define OC_MMR0 if (oc_active) ocp->MMR0 = MMR0
-#define OC_MMR3 if (oc_active) ocp->MMR3 = MMR3
 #define oc_toggle_clear() if (oc_active) oc_send_cmd('a')
 
 struct SERPORT {
@@ -136,7 +135,7 @@ struct SERPORT {
   };
 
 extern uint32 cpu_model;
-extern struct oc_st *ocp;
+extern OC_ST *ocp;
 
 /* function prototypes simh integration */
 
@@ -151,23 +150,23 @@ t_stat oc_svc (UNIT *uptr);
 
 /* function prototypes OC */
 
-void   oc_clear_halt (void);
-int    oc_get_SWR (void);
-t_bool oc_get_console (char *cptr);
-t_bool oc_get_halt (void);
-int    oc_halt_status (void);
-t_bool oc_poll (SERHANDLE port, int amount);
-uint32 oc_read_A (void);
-uint16 oc_read_D (void);
-char  *oc_read_line_p (char *prompt, char *cptr, int32 size, FILE *stream);
-void   oc_set_master (t_bool flag);
-void   oc_set_mmu (void);
-void   oc_set_port1 (uint8 flag, t_bool action);
-void   oc_set_port2 (uint8 flag, t_bool action);
-void   oc_set_ringprot (int value);
-void   oc_send_cmd (uint8 cmd);
-void   oc_send_ack (uint8 mask);
-void   oc_wait (t_bool flag);
+void    oc_clear_halt (void);
+int     oc_get_SWR (void);
+t_bool  oc_get_console (char *cptr);
+t_bool  oc_get_halt (void);
+int     oc_halt_status (void);
+t_bool  oc_poll (SERHANDLE port, int amount);
+uint32  oc_read_A (void);
+uint16  oc_read_D (void);
+char   *oc_read_line_p (char *prompt, char *cptr, int32 size, FILE *stream, int32 do_echo);
+void    oc_set_master (t_bool flag);
+void    oc_set_mmu (void);
+void    oc_set_port1 (uint8 flag, t_bool action);
+void    oc_set_port2 (uint8 flag, t_bool action);
+void    oc_set_ringprot (int value);
+void    oc_send_cmd (uint8 cmd);
+void    oc_send_ack (uint8 mask);
+void    oc_wait (t_bool flag);
 
 #endif /* OC_DEFS */
 

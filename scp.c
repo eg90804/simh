@@ -570,11 +570,7 @@ struct timespec sim_deb_basetime;                       /* debug timestamp relat
 char *sim_prompt = NULL;                                /* prompt string */
 static FILE *sim_gotofile;                              /* the currently open do file */
 static int32 sim_goto_line[MAX_DO_NEST_LVL+1];          /* the current line number in the currently open do file */
-#ifdef OPCON
-int32 sim_do_echo = 0;                                  /* the echo status of the currently open do file */
-#else
 static int32 sim_do_echo = 0;                           /* the echo status of the currently open do file */
-#endif
 static int32 sim_show_message = 1;                      /* the message display status of the currently open do file */
 static int32 sim_on_inherit = 0;                        /* the inherit status of on state and conditions when executing do files */
 static int32 sim_do_depth = 0;
@@ -1258,9 +1254,6 @@ static const char simh_help[] =
 #define HLP_SHOW_ON             "*Commands SHOW"
 #define HLP_SHOW_SEND           "*Commands SHOW"
 #define HLP_SHOW_EXPECT         "*Commands SHOW"
-#ifdef OPCON
-#define HLP_SHOW_OC             "*Commands SHOW"
-#endif
 #define HLP_HELP                "*Commands HELP"
        /***************** 80 character line width template *************************/
       "2HELP\n"
@@ -1775,6 +1768,7 @@ ASSERT      failure have several different actions:
       "2Exiting The Simulator\n"
       " EXIT (synonyms QUIT and BYE) returns control to the operating system.\n"
        /***************** 80 character line width template *************************/
+#if defined(USE_SIM_VIDEO)
 #define HLP_SCREENSHOT  "*Commands Screenshot_Video_Window"
       "2Screenshot Video Window\n"
       " Simulators with Video devices display the simulated video in a window\n"
@@ -1785,6 +1779,7 @@ ASSERT      failure have several different actions:
       " which will create a screen shot file called screenshotfile.png\n"
 #else
       " which will create a screen shot file called screenshotfile.bmp\n"
+#endif
 #endif
 #define HLP_SPAWN       "*Commands Executing_System_Commands"
       "2Executing System Commands\n"
@@ -2128,7 +2123,7 @@ detach_all (0, TRUE);                                   /* close files */
 sim_set_deboff (0, NULL);                               /* close debug */
 sim_set_logoff (0, NULL);                               /* close log */
 sim_set_notelnet (0, NULL);                             /* close Telnet */
-#ifdef US_SIM_VIDEO
+#ifdef USE_SIM_VIDEO
 vid_close ();                                           /* close video */
 #endif
 sim_ttclose ();                                         /* close console */
@@ -2156,7 +2151,7 @@ while (stat != SCPE_EXIT) {                             /* in case exit */
         cptr = (*sim_vm_read) (cbuf, sizeof(cbuf), stdin);
         }
 #ifdef OPCON
-    else cptr = oc_read_line_p (sim_prompt, cbuf, sizeof(cbuf), stdin);/* read with prompt*/
+    else cptr = oc_read_line_p (sim_prompt, cbuf, sizeof(cbuf), stdin, sim_do_echo);/* read with prompt*/
 #else
     else cptr = read_line_p (sim_prompt, cbuf, sizeof(cbuf), stdin);/* read with prmopt*/
 #endif
@@ -2807,7 +2802,7 @@ t_stat screenshot_cmd (int32 flag, CONST char *cptr)
 {
 if ((cptr == NULL) || (strlen (cptr) == 0))
     return SCPE_ARG;
-#if defined (USE_SIM_VIDEO)
+#if defined(USE_SIM_VIDEO)
 return vid_screenshot (cptr);
 #else
 sim_printf ("No video device\n");
@@ -7135,7 +7130,7 @@ if (rptr->flags & REG_RO)
     return SCPE_RO;
 if (flag & EX_I) {
 #ifdef OPCON
-    cptr = oc_read_line_p (NULL, gbuf, sizeof(gbuf), stdin);
+    cptr = oc_read_line_p (NULL, gbuf, sizeof(gbuf), stdin, sim_do_echo);
 #else
     cptr = read_line (gbuf, sizeof(gbuf), stdin);
 #endif
@@ -7375,7 +7370,7 @@ if (dptr == NULL)
     return SCPE_IERR;
 if (flag & EX_I) {
 #ifdef OPCON
-    cptr = oc_read_line_p (NULL, gbuf, sizeof(gbuf), stdin);
+    cptr = oc_read_line_p (NULL, gbuf, sizeof(gbuf), stdin, sim_do_echo);
 #else
     cptr = read_line (gbuf, sizeof(gbuf), stdin);
 #endif

@@ -88,8 +88,6 @@ extern char *do_position (void);
 extern int32 sim_read_serial(SERHANDLE port, char *bufp, int32 count,char *brk);
 extern int32 sim_write_serial (SERHANDLE port, char *bufp, int32 count);
 extern int32 sim_quiet;			/* Quiet output mode */
-extern UNIT cpu_unit;			/* configured memory size */
-extern int32 sim_do_echo;
 
 /* Defines */
 #define INP1                    0
@@ -272,6 +270,8 @@ else
 strcpy(ocp->line, tptr);
 ocp->first_exam = TRUE;
 ocp->first_dep = TRUE;
+ocp->MMR0 = &MMR0;
+ocp->MMR3 = &MMR3;
 ocp->A[0] = 0xFF;
 
 sprintf(con_av[0], "0X%08X", ocp);
@@ -747,9 +747,9 @@ oc_set_port2 (FSTS_1170_18BIT, 0);
 oc_set_port2 (FSTS_1170_22BIT, 0);
  
 	/* determine mapping from current processor state */
-if (ocp->MMR0 & MMR0_MME) {
+if (*ocp->MMR0 & MMR0_MME) {
     map = 18;
-    if (ocp->MMR3 & MMR3_M22E)
+    if (*ocp->MMR3 & MMR3_M22E)
         map = 22;
     }
 
@@ -888,7 +888,7 @@ while(ocp->OUT != 0) usleep(1000);
  *	      function returns the pointer to the received string.
  * Returns  : Pointer to received string
  */
-char *oc_read_line_p (char *prompt, char *cptr, int32 size, FILE *stream)
+char *oc_read_line_p (char *prompt, char *cptr, int32 size, FILE *stream, int32 do_echo)
 {
 char *tptr = cptr, key_entry = 0, brk = 0;
 struct SERPORT cons0, cons1;
@@ -937,9 +937,9 @@ while (isspace (*cptr))
     cptr++;			/* absorb spaces */
 
 if (*cptr == ';') {
-    if (sim_do_echo)		/* echo comments if -v */
+    if (do_echo)		/* echo comments if -v */
 	printf ("%s> %s\n", do_position(), cptr);
-    if (sim_do_echo && sim_log)
+    if (do_echo && sim_log)
 	fprintf (sim_log, "%s> %s\n", do_position(), cptr);
     *cptr = 0;
     }

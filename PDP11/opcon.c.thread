@@ -96,8 +96,6 @@ extern char *do_position (void);
 extern int32 sim_read_serial(SERHANDLE port, char *bufp, int32 count,char *brk);
 extern int32 sim_write_serial (SERHANDLE port, char *bufp, int32 count);
 extern int32 sim_quiet;			/* Quiet output mode */
-extern UNIT cpu_unit;			/* configured memory size */
-extern int32 sim_do_echo;
 extern int32 MMR0, MMR3;		/* MMU registers */
 
 /* Defines */
@@ -271,6 +269,7 @@ if ((r = tmxr_attach (&oc_tmxr, uptr, cptr)))		/* open the link */
 memset (&oc_ctl, 0, sizeof(OC_ST));		/* init OC control block */
 oc_ctl.first_exam = TRUE;
 oc_ctl.first_dep = TRUE;
+oc_ctl.HALT=2;				/* Assume HALT is set for now */
 oc_ldsc.rcve = TRUE;				/* mark as available */
 
 if (cpu_model == MOD_1145)
@@ -302,6 +301,7 @@ if (!K) {
         printf ("OC    : Operator console ENABLE/HALT switch set to ");
 	}
     if (!H) {				/* HALT key is up */
+	oc_ctl.HALT = 0;
 	if (!sim_quiet)
 	    printf ("ENABLE\n");
 	}
@@ -315,7 +315,7 @@ else
     if (!sim_quiet)
 	printf ("LOCK\n");
 
-#if defined(SIM_ASYNC_IO)
+#if defined(OPCON_ASYNC)
 if ((r = pthread_create(&oc_ctl.t_thr, NULL, oc_thread, (void *)&oc_ctl.t_end)) != 0) {
     fprintf(stderr, "Error creating OC thread, return code %d\n", r);
     tmxr_close_master (&oc_tmxr);	/* close the serial line too */
@@ -338,7 +338,7 @@ t_stat r;
 if (!oc_ldsc.rcve || !oc_ldsc.serport)		/* return if already closed */
     return SCPE_OK;
 
-#if defined(SIM_ASYNC_IO)
+#if defined(OPCON_ASYNC)
 oc_ctl.t_end = 1;
 usleep(10000);					/* allow oc_th to flush */
 pthread_join(oc_ctl.t_thr, NULL);		/* cleanup console sending thread */
@@ -360,7 +360,7 @@ return r;
 t_stat oc_reset (DEVICE *dptr)
 {
 sim_debug (OCDEB_TRC, &oc_dev, "oc_reset : called\n");
-#if !defined(SIM_ASYNC_IO)
+#if !defined(OPCON_ASYNC)
 sim_activate_after (&oc_unit, OC_INTERVAL);     /* queue service routine */
 #endif
 return SCPE_OK;
@@ -380,7 +380,7 @@ static uint32 resched;
 if (!oc_ldsc.rcve)			/* console link configured / open? */
     return FALSE;
 
-#if !defined(SIM_ASYNC_IO)
+#if !defined(OPCON_ASYNC)
 sim_debug (OCDEB_TRC, &oc_dev, "oc_svc : called\n");
 R = sim_os_msec();
 sim_debug (OCDEB_SVC, &oc_dev, "oc_svc : delta = %d\n", R - resched);
@@ -940,7 +940,7 @@ return (oc_ctl.S[SWR_08_15_PORT] * 256 + oc_ctl.S[SWR_00_07_PORT]);
  *	      function returns the pointer to the received string.
  * Returns  : Pointer to received string
  */
-char *oc_read_line_p (char *prompt, char *cptr, int32 size, FILE *stream)
+char *oc_read_line_p (char *prompt, char *cptr, int32 size, FILE *stream, int32 do_echo)
 {
 char *tptr = cptr, key_entry = 0, brk = 0;
 struct SERPORT cons0, cons1;
@@ -989,9 +989,9 @@ while (isspace (*cptr))
     cptr++;			/* absorb spaces */
 
 if (*cptr == ';') {
-    if (sim_do_echo)		/* echo comments if -v */
+    if (do_echo)		/* echo comments if -v */
 	printf ("%s> %s\n", do_position(), cptr);
-    if (sim_do_echo && sim_log)
+    if (do_echo && sim_log)
 	fprintf (sim_log, "%s> %s\n", do_position(), cptr);
     *cptr = 0;
     }
@@ -1239,7 +1239,7 @@ if (value == MD_USR) status &= 0xFF;
 oc_ctl.PORT1 = status;
 }
 
-#if defined(SIM_ASYNC_IO)
+#if defined(OPCON_ASYNC)
 /*
  * Function : oc_thread
  * Note     : Service routine for the threading solution
