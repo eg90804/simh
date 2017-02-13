@@ -386,13 +386,15 @@ R = sim_os_msec();
 sim_debug (OCDEB_SVC, &oc_dev, "oc_svc : delta = %d\n", R - resched);
 
 if ((R - resched) < OC_MINVAL) {         /* sufficient time passed by? */
-    sim_activate_after (uptr, OC_MINVAL);       /* reschedule */
+//    sim_activate_after (uptr, OC_MINVAL);       /* reschedule */
+    sim_activate_after (uptr, 1000);       /* reschedule */
     return 0;
     }
 resched = R;					/* set as new marker */
 oc_console ();
-sim_activate_after (uptr, OC_INTERVAL);         /* reschedule */
 #endif    
+//sim_activate_after (uptr, OC_INTERVAL);         /* reschedule */
+sim_activate_after (uptr, 1000);         /* reschedule */
 return SCPE_OK;
 }
 
@@ -520,8 +522,9 @@ return "OC11 : Interface to operator console processor";
  */
 int oc_check_halt (void)
 {
-if (oc_ctl.HALT == 2)
+if ((cpu_model == MOD_1145 || cpu_model == MOD_1170) && oc_ctl.HALT == 2)
     return(1);
+
 return(0);
 }
 
@@ -954,11 +957,13 @@ if (prompt)
     printf ("%s", sim_prompt); fflush(stdout);
 
 for (;;) {
-    oc_set_master (TRUE);
-    if (oc_get_CON (cptr) == TRUE) { /* poll console for data */
-        printf ("%s", cptr);
-        break;
-        }
+    if (cpu_model == MOD_1145 || cpu_model == MOD_1170) {
+      oc_set_master (TRUE);
+      if (oc_get_CON (cptr) == TRUE) { /* poll console for data */
+          printf ("%s", cptr);
+          break;
+          }
+      }
 
     if (oc_poll (consp0, 10000) == (t_bool)TRUE &&	/* wait for data on keyboard */
         sim_read_serial (consp0, &key_entry, 1, &brk) > 0) {
@@ -996,10 +1001,11 @@ if (*cptr == ';') {
     *cptr = 0;
     }
 
-oc_set_master (FALSE);
-if (oc_ctl.HALT == 1)		/* no stray mode flag */
-    stop_cpu = 1;
-
+if (cpu_model == MOD_1145 || cpu_model == MOD_1170) {
+  oc_set_master (FALSE);
+  if (oc_ctl.HALT == 1)		/* no stray mode flag */
+      stop_cpu = 1;
+  }
 return cptr;			/* points to begin of cmd or 0*/
 }
 
