@@ -316,7 +316,7 @@ else
 	printf ("LOCK\n");
 
 #if defined(OPCON_ASYNC)
-if ((r = pthread_create(&oc_ctl.t_thr, NULL, oc_thread, (void *)&oc_ctl.t_end)) != 0) {
+if ((r = pthread_create(&oc_ctl.t_thr, NULL, &oc_thread, (void *)&oc_ctl.t_end)) != 0) {
     fprintf(stderr, "Error creating OC thread, return code %d\n", r);
     tmxr_close_master (&oc_tmxr);	/* close the serial line too */
     return(-1);
