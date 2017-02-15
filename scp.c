@@ -2230,9 +2230,6 @@ return cmdp;
 
 t_stat exit_cmd (int32 flag, CONST char *cptr)
 {
-#ifdef OPCON
-oc_detach((UNIT *)0);
-#endif
 return SCPE_EXIT;
 }
 
