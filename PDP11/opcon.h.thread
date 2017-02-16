@@ -134,9 +134,11 @@ typedef struct OC_ST OC_ST;
 struct SERPORT {
   int port;
   };
+typedef struct SERPORT SERPORT;
 
 extern uint32 cpu_model;
 extern OC_ST oc_ctl;
+extern t_bool oc_active;
 
 #if defined(OPCON_ASYNC)
 int pthread_create(pthread_t *a, CONST pthread_attr_t *b, void *(*c)(void*), void *d);
@@ -162,7 +164,7 @@ t_bool  oc_get_CON (char *cptr);
 t_bool  oc_get_HLT (void);
 int     oc_get_RTR (void);
 int     oc_get_SWR (void);
-t_bool  oc_poll (SERHANDLE port, int amount);
+t_bool  oc_poll (int port, int amount);
 uint32  oc_read_A (void);
 uint16  oc_read_D (void);
 char   *oc_read_line_p (char *prompt, char *cptr, int32 size, FILE *stream, int32 do_echo);

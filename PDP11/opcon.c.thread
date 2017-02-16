@@ -93,8 +93,6 @@
 extern SERHANDLE sim_open_serial (char *name, TMLN *lp, t_stat *status);
 extern SERHANDLE sim_close_serial (SERHANDLE port);
 extern char *do_position (void);
-extern int32 sim_read_serial(SERHANDLE port, char *bufp, int32 count,char *brk);
-extern int32 sim_write_serial (SERHANDLE port, char *bufp, int32 count);
 extern int32 sim_quiet;			/* Quiet output mode */
 extern int32 MMR0, MMR3;		/* MMU registers */
 
@@ -216,11 +214,11 @@ DEVICE oc_dev = {
     &oc_description				/* description function */
     };
 
+t_bool oc_active = FALSE;
+SERPORT oc_serport = { 0 };
+
 /* Serial line definition */
 TMLN oc_ldsc = { 0 };
-
-/* Multiplexer definition */
-TMXR oc_tmxr = { 1, 0, 0, &oc_ldsc, NULL, &oc_dev };
 
 /*   ***   ***   ***   ***   SIMH device integration   ***   ***   ***   ***   */
 
@@ -238,11 +236,10 @@ t_stat oc_attach (UNIT *uptr, CONST char *cptr)
 char *cmdp, *tptr;
 uint32 H, K;
 t_stat r;
-SERHANDLE p;
+SERHANDLE p = &oc_serport;
 
 sim_debug (OCDEB_TRC, &oc_dev, "oc_attach : called\n");
 
-oc_ldsc.rcve = FALSE;				/* mark as not available */
 if (cptr == NULL)
     return SCPE_ARG;
 
@@ -255,29 +252,26 @@ if ((tptr = strchr (cptr, '=')) == NULL)
     return SCPE_ARG;
 *tptr++;						/* skip '=' */
 
-if ((p = sim_open_serial (tptr, NULL, &r)) != (SERHANDLE)-1) {	/* port usable? */
-    sim_close_serial (p);
-    if (r != SCPE_OK)
+if ((p = sim_open_serial (tptr, NULL, &r)) != ((SERHANDLE)(void *)-1)) { /* port usable? */
+    if (r != SCPE_OK) {
+        sim_close_serial (p);
         return -1;
+        }
     }
-
-if ((oc_tmxr.master) || (oc_ldsc.serport))		/* already open? */
-    tmxr_close_master (&oc_tmxr);			/* close it first */
-if ((r = tmxr_attach (&oc_tmxr, uptr, cptr)))		/* open the link */
-    return r;
 
 memset (&oc_ctl, 0, sizeof(OC_ST));		/* init OC control block */
 oc_ctl.first_exam = TRUE;
 oc_ctl.first_dep = TRUE;
 oc_ctl.HALT=2;				/* Assume HALT is set for now */
-oc_ldsc.rcve = TRUE;				/* mark as available */
+
+oc_active = TRUE;				/* mark as available */
 
 if (cpu_model == MOD_1145)
     cmdp = "p4";
 else
     cmdp = "p5";
 
-if (sim_write_serial (oc_ldsc.serport, cmdp, 2) != 2) {
+if (write (oc_serport.port, cmdp, 2) != 2) {
     printf ("OC    : Error sending config type to the console\n");
     return -1;
     }
@@ -318,7 +312,7 @@ else
 #if defined(OPCON_ASYNC)
 if ((r = pthread_create(&oc_ctl.t_thr, NULL, &oc_thread, (void *)&oc_ctl.t_end)) != 0) {
     fprintf(stderr, "Error creating OC thread, return code %d\n", r);
-    tmxr_close_master (&oc_tmxr);	/* close the serial line too */
+    sim_close_serial (p);
     return(-1);
     }
 #endif
@@ -333,9 +327,10 @@ return SCPE_OK;
  */
 t_stat oc_detach (UNIT *uptr)
 {
-t_stat r;
+t_stat r = 0;
+SERHANDLE p = &oc_serport;
 
-if (!oc_ldsc.rcve || !oc_ldsc.serport)		/* return if already closed */
+if (!oc_active)					/* return if already closed */
     return SCPE_OK;
 
 #if defined(OPCON_ASYNC)
@@ -346,8 +341,8 @@ pthread_join(oc_ctl.t_thr, NULL);		/* cleanup console sending thread */
 sim_cancel(&oc_unit);
 #endif
 
-r = tmxr_detach (&oc_tmxr, uptr);		/* detach link          */
-oc_ldsc.rcve = FALSE;				/* clear receiver flag  */
+sim_close_serial (p);
+oc_active = FALSE;				/* clear receiver flag  */
 
 return r;
 }
@@ -377,7 +372,7 @@ uint32 A, R;
 uint16 D;
 static uint32 resched;
 
-if (!oc_ldsc.rcve)			/* console link configured / open? */
+if (!oc_active)				/* console link configured / open? */
     return FALSE;
 
 #if !defined(OPCON_ASYNC)
@@ -405,7 +400,7 @@ return SCPE_OK;
  */
 t_stat oc_show (FILE *st, UNIT *uptr, int32 val, CONST void *desc)
 {
-if (oc_ldsc.rcve)
+if (oc_active)
     fputs ("active\n", st);
 else
     fputs ("not active\n", st);
@@ -592,18 +587,17 @@ switch(c_cnt++) {
  */
 t_bool oc_get_CON (char *cptr)
 {
-char brk = 0;
 uint8 c = 0;
 uint16 D;
 uint32 A;
 
 sim_debug (OCDEB_TRC, &oc_dev, "oc_get_CON : called\n");
 
-if (!oc_ldsc.rcve)			/* console link configured / open? */
+if (!oc_active)				/* console link configured / open? */
     return FALSE;
 
-if (oc_poll (oc_ldsc.serport, 10000) == (t_bool)FALSE ||	/* wait 10 msec for input */
-    sim_read_serial (oc_ldsc.serport, &c, 1, &brk) != 1 || 
+if (oc_poll (oc_serport.port, 10000) == (t_bool)FALSE ||	/* wait 10 msec for input */
+    read (oc_serport.port, &c, 1) != 1 || 
     c == 0)
     return FALSE;
 
@@ -749,15 +743,14 @@ return TRUE;
  */
 t_bool oc_get_HLT (void)
 {
-char brk = 0;
 uint8 c = 0;
 
-if (!oc_ldsc.rcve)
+if (!oc_active)
     return FALSE;
 
 sim_debug (OCDEB_TRC, &oc_dev, "oc_get_HLT : called\n");
 
-if (sim_read_serial (oc_ldsc.serport, &c, 1, &brk) != 1 || c == 0)
+if (read (oc_serport.port, &c, 1) != 1 || c == 0)
     return FALSE;
 
 sim_debug (OCDEB_HLT, &oc_dev, "oc_get_HLT : got (%2X:%c)\n", c, c);
@@ -785,21 +778,20 @@ return FALSE;
  */
 int oc_get_RTR (void)
 {
-char brk = 0;
 uint8 c = 'R';
 
-if (!oc_ldsc.rcve)
+if (!oc_active)
     return 0;
 
 sim_debug (OCDEB_TRC, &oc_dev, "oc_get_RTR : called\n");
 
-if (sim_write_serial (oc_ldsc.serport, &c, 1) != 1) {
+if (write (oc_serport.port, &c, 1) != 1) {
     printf("OC    : Error sending 'ROTARY' command.\n");
     return -1;
     }
 
-while (1) { if (oc_poll (oc_ldsc.serport, 1000) == (t_bool)TRUE) break; }
-if (sim_read_serial (oc_ldsc.serport, &c, 1, &brk) != 1 &&
+while (1) { if (oc_poll (oc_serport.port, 1000) == (t_bool)TRUE) break; }
+if (read (oc_serport.port, &c, 1) != 1 &&
         errno != EAGAIN && errno != EWOULDBLOCK)
     return -1;
 
@@ -823,26 +815,25 @@ return 0;
  */
 int oc_get_SWR (void)
 {
-char brk = 0;
 uint8 c = 'Q';
 uint32 K;
 int x;
 
-if (!oc_ldsc.rcve)
+if (!oc_active)
   return 0;
 
 sim_debug (OCDEB_TRC, &oc_dev, "oc_get_SWR : called\n");
 
-if (sim_write_serial (oc_ldsc.serport, &c, 1) != 1) {
+if (write (oc_serport.port, &c, 1) != 1) {
     printf("OC    : Error sending 'QUERY' command.\n");
     return -1;
     }
 
 	/* retrieve the input port data from the console processor */
 for (x = 0; x < QUERY_SWR_BYTES; x++) {
-    while (1) { if (oc_poll (oc_ldsc.serport, 1000) == (t_bool)TRUE) break; }
+    while (1) { if (oc_poll (oc_serport.port, 1000) == (t_bool)TRUE) break; }
     c = 0;
-    if (sim_read_serial (oc_ldsc.serport, &c, 1, &brk) != 1 &&
+    if (read (oc_serport.port, &c, 1) != 1 &&
         	errno != EAGAIN && errno != EWOULDBLOCK)
         return -1;
     oc_ctl.S[x] = c;
@@ -862,7 +853,7 @@ return 0;
  */
 void oc_set_port1 (uint8 flag, t_bool action)
 {
-if (!oc_ldsc.rcve)
+if (!oc_active)
     return;
 
 if (!action)
@@ -878,7 +869,7 @@ else
  */
 void oc_set_port2 (uint8 flag, t_bool action)
 {
-if (!oc_ldsc.rcve)
+if (!oc_active)
     return;
 
 if (!action)
@@ -926,7 +917,7 @@ return A;
  */
 uint16 oc_read_D ()
 {
-if (!oc_ldsc.rcve)
+if (!oc_active)
     return 0;
 
 return (oc_ctl.S[SWR_08_15_PORT] * 256 + oc_ctl.S[SWR_00_07_PORT]);
@@ -945,11 +936,7 @@ return (oc_ctl.S[SWR_08_15_PORT] * 256 + oc_ctl.S[SWR_00_07_PORT]);
  */
 char *oc_read_line_p (char *prompt, char *cptr, int32 size, FILE *stream, int32 do_echo)
 {
-char *tptr = cptr, key_entry = 0, brk = 0;
-struct SERPORT cons0, cons1;
-SERHANDLE consp0 = &cons0, consp1 = &cons1;
-cons0.port=0;
-cons1.port=1;
+char *tptr = cptr, key_entry = 0;
  
 sim_debug (OCDEB_TRC, &oc_dev, "oc_read_line_p : called\n");
 
@@ -965,17 +952,17 @@ for (;;) {
           }
       }
 
-    if (oc_poll (consp0, 10000) == (t_bool)TRUE &&	/* wait for data on keyboard */
-        sim_read_serial (consp0, &key_entry, 1, &brk) > 0) {
+    if (oc_poll (0, 10000) == (t_bool)TRUE &&	/* wait for data on keyboard */
+        read (0, &key_entry, 1) > 0) {
         if (key_entry == '\b' && *tptr > *cptr) {	/* backspace */
             *tptr--;
-            sim_write_serial (consp1, &key_entry, 1);	
-            sim_write_serial (consp1, " ", 1);
-            sim_write_serial (consp1, &key_entry, 1);
+            write (1, &key_entry, 1);	
+            write (1, " ", 1);
+            write (1, &key_entry, 1);
             }
         else {					/* regular character */
             *tptr++ = key_entry;		/* store the character */
-            sim_write_serial (consp1, &key_entry, 1);/* echo the entry to crt */
+            write (1, &key_entry, 1);/* echo the entry to crt */
             if ((key_entry == '\n') || (key_entry == '\r'))
                 break;
             }
@@ -1022,7 +1009,7 @@ void oc_send_A (uint32 A)
 uint8 mask = 0, cmd[4];
 int r;
 
-if (!oc_ldsc.rcve)
+if (!oc_active)
     return;
 
 sim_debug(OCDEB_TRC, &oc_dev, "oc_send_A : raw address %06X\n", A);
@@ -1038,7 +1025,7 @@ cmd[1] = (uint8)((A >> 16) & mask) ;
 cmd[2] = (uint8)((A >>  8) & 0xFF) ;
 cmd[3] = (uint8) (A & 0xFF);
 
-if ((r = sim_write_serial(oc_ldsc.serport, cmd, 4)) != 4)
+if ((r = write (oc_serport.port, cmd, 4)) != 4)
   printf("OC    : Error sending ADDRESS to the console (e=%d, wr=%d)\n",
 	 errno, r);
 }
@@ -1056,7 +1043,7 @@ void oc_send_AD (uint32 A, uint16 D)
 uint8 mask = 0, cmd[6];
 int r;
 
-if (!oc_ldsc.rcve)
+if (!oc_active)
     return;
 
 sim_debug(OCDEB_TRC, &oc_dev, "oc_send_AD : called\n");
@@ -1075,7 +1062,7 @@ cmd[4] = (uint8)((D >> 8) & 0xFF) ;
 cmd[5] = (uint8) (D & 0xFF);
 
 sim_debug(OCDEB_UPD, &oc_dev, "oc_send_AD : A:0x%06X D:0x%04X\n", A, D);
-if ((r = sim_write_serial(oc_ldsc.serport, cmd, 6)) != 6)
+if ((r = write (oc_serport.port, cmd, 6)) != 6)
   printf("OC    : Error sending ADDRES & DATA to the console (e=%d, wr=%d)\n",
 	 errno, r);
 }
@@ -1092,7 +1079,7 @@ uint32 A;
 uint16 D;
 int r;
 
-if (!oc_ldsc.rcve)
+if (!oc_active)
     return;
 
 sim_debug(OCDEB_TRC, &oc_dev, "oc_send_ADS : called\n");
@@ -1150,7 +1137,7 @@ cmd[6] = oc_ctl.PORT1;
 cmd[7] = oc_ctl.PORT2;
 
 sim_debug(OCDEB_UPD, &oc_dev, "oc_send_ADS : A:0x%06X D:0x%04X\n", A, D);
-if ((r = sim_write_serial(oc_ldsc.serport, cmd, 8)) != 8)
+if ((r = write (oc_serport.port, cmd, 8)) != 8)
   printf("OC    : Error sending ADDRESS/DATA & STATUS to the console (e=%d, wr=%d)\n",
 	 errno, r);
 }
@@ -1164,7 +1151,7 @@ void oc_send_S (void)
 {
 uint8 cmd[4];
 
-if (!oc_ldsc.rcve)
+if (!oc_active)
     return;
 
 sim_debug(OCDEB_TRC, &oc_dev, "oc_send_S : called\n");
@@ -1175,7 +1162,7 @@ cmd[2] = oc_ctl.PORT2;
 
 sim_debug(OCDEB_STS, &oc_dev, "oc_send_S : raw byte1 0x%X, byte2 : 0x%X\n",
         cmd[0], cmd[1]);
-if (sim_write_serial (oc_ldsc.serport, cmd, 3) != 3)
+if (write (oc_serport.port, cmd, 3) != 3)
     printf("OC    : Error sending STATUS to the console\n");
 }
 
@@ -1202,7 +1189,7 @@ void oc_set_mmu (void)
 {
 uint8 status, map = 16;
 
-if (!oc_ldsc.rcve || cpu_model == MOD_1145)
+if (!oc_active || cpu_model == MOD_1145)
     return;
 
 oc_set_port2 (FSTS_1170_16BIT, 0);
@@ -1297,7 +1284,7 @@ cmd[0] = 'c';
 cmd[1] = (uint8)(INP3 + 0x30);
 cmd[2] = mask;
 
-if ((r = sim_write_serial (oc_ldsc.serport, cmd, 3)) != 3)
+if ((r = write (oc_serport.port, cmd, 3)) != 3)
     printf ("OC    : Error sending CLEAR_TOGGLE to the console (err=%d,r=%d)\n",
 	 errno, r);
 }
@@ -1311,12 +1298,12 @@ void oc_toggle_clear (void)
 {
 uint8 c = 'i';
 
-if (!oc_ldsc.rcve)
+if (!oc_active)
     return;
 
 sim_debug (OCDEB_TRC, &oc_dev, "oc_toggle_clear : called\n");
 
-if (sim_write_serial (oc_ldsc.serport, &c, 1) != 1)
+if (write (oc_serport.port, &c, 1) != 1)
     printf("OC    : Error sending CLEAR_ALL_TOGGLES to the console\n");
 }
 
@@ -1344,20 +1331,7 @@ else {
  * Returns  : 0 : no error
  *            1 : hit detected
  */
-#ifdef _WIN32
-
-t_bool oc_poll (SERHANDLE channel, DWORD p)
-{
-if (WaitForSingleObject (channel, p / 1000) = WAIT_OBJECT_0) 
-    return TRUE;
-
-return FALSE;
-}
-
-//#elif defined (__unix__) || (__linux) || (__solaris)
-#else 
-
-t_bool oc_poll (SERHANDLE channel, int p)
+t_bool oc_poll (int port, int p)
 {
 fd_set s;
 struct timeval t;
@@ -1366,15 +1340,14 @@ t.tv_sec = 0;
 t.tv_usec = p;
 
 FD_ZERO (&s);
-FD_SET (channel->port, &s);
+FD_SET (port, &s);
 
 select (FD_SETSIZE, &s, NULL, NULL, &t);
 
-if (FD_ISSET (channel->port, &s))
+if (FD_ISSET (port, &s))
     return TRUE;
 
 return FALSE;
 }
 
-#endif
 /* EOF */
