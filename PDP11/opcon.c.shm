@@ -27,7 +27,7 @@
 
    17-jan-17    EG      Shared memory version, rename some function
    14-mar-14    EG      added rom address range check, changed interval
-   10-mar-14    EG      oc_get_console : add inv addr check 
+   10-mar-14    EG      oc_get_CON : add inv addr check 
                         oc_read_A : address masking & inv addr flag
                         added function oc_get_rotary; fix load adrs cmd not -
                         to generate 'dep pc xxx'.
@@ -45,8 +45,8 @@
  * oc_svc()			: service routine
  *
  * OPCON routines
+ * oc_get_CONe()		: get function command
  * oc_get_SWR()			: get switch & knob settings from console
- * oc_get_console()		: get function command
  * oc_read_A()			: read address from swr data array
  * oc_read_D()			: read data from swr data array
  * oc_poll()			: pool input channel for data ready
@@ -88,6 +88,7 @@ extern char *do_position (void);
 extern int32 sim_read_serial(SERHANDLE port, char *bufp, int32 count,char *brk);
 extern int32 sim_write_serial (SERHANDLE port, char *bufp, int32 count);
 extern int32 sim_quiet;			/* Quiet output mode */
+extern int32 MMR0, MMR3;
 
 /* Defines */
 #define INP1                    0
@@ -151,11 +152,11 @@ extern int32 sim_quiet;			/* Quiet output mode */
 #define OCDEB_UPD	      100	/* address & data leds update */
 
 /* Global declarations for the OC device */
-oc_st	*ocp;				/* OC device control block */
+OC_ST	*ocp;				/* OC device control block */
 
 /* Debug flags & keywords for the OC device */
 DEBTAB oc_debug[] = {
-    { "CON", OCDEB_CON },		/* used in oc_get_console */
+    { "CON", OCDEB_CON },		/* used in oc_get_CON */
     { "HLT", OCDEB_HLT },		/* used in oc_get_halt */
     { "STS", OCDEB_STS },		/* used in oc_send_S (status) */
     { "SWR", OCDEB_SWR },		/* used in oc_get_SWR */
@@ -256,22 +257,17 @@ if ((p = sim_open_serial (tptr, NULL, &r)) == (SERHANDLE)-1) {	/* port usable? *
 else
   sim_close_serial(p);		/* close it, else CPB has a problem */
 
-if ((i = shmget(oc_key, sizeof(oc_st), (IPC_CREAT | 0666))) < 0 ||
-    (ocp = (oc_st *)shmat(i, NULL, 0)) == (oc_st *)-1)  {
+if ((i = shmget(oc_key, sizeof(OC_ST), (IPC_CREAT | 0666))) < 0 ||
+    (ocp = (OC_ST *)shmat(i, NULL, 0)) == (OC_ST *)-1)  {
   printf("OC    : Cannot create or attach shm segment (errno = %d).\n", errno);
   return -1;
   }
 
-memset(ocp, 0, sizeof(oc_st));
-if (cpu_model == MOD_1145)
-    ocp->cpu_model = 4;
-else
-    ocp->cpu_model = 5;
+memset(ocp, 0, sizeof(OC_ST));
+ocp->cpu_model = cpu_model;
 strcpy(ocp->line, tptr);
 ocp->first_exam = TRUE;
 ocp->first_dep = TRUE;
-ocp->MMR0 = &MMR0;
-ocp->MMR3 = &MMR3;
 ocp->A[0] = 0xFF;
 
 sprintf(con_av[0], "0X%08X", ocp);
@@ -290,7 +286,7 @@ if (oc_console_pid == 0) {	/* I'm the child */
 
 /* wait for address [0] to become cleared */
 for (i = 0; ocp->A[0] != 0 && i < 5; i++)
-  sleep(1);
+  usleep(25000);
 
 if (ocp->A[0] != 0) {
   kill(oc_console_pid, SIGHUP);
@@ -465,8 +461,6 @@ CONST char *const text =
 "\n"
 "   sim> ATTACH OC connect=/dev/ttyS1\n"
 "\n"
-" Valid port numbers are from 0 thru 31\n"
-"\n"
 " The connection configured for the OC device are unconfigured by:\n"
 "\n"
 "   sim> DETACH OC\n"
@@ -490,7 +484,7 @@ return "OC11 : Interface to operator console processor";
 }
 
 /*
- * Function : oc_get_console()
+ * Function : oc_get_CON()
  * Note     : Poll the console link for a single byte command.
  * 	      It is processed and appropiate action is taken.
  *
@@ -508,24 +502,24 @@ return "OC11 : Interface to operator console processor";
  * 		    exception (as with a real console) is the HALT switch
  *            TRUE  when a pseudo command is returned
  */
-t_bool oc_get_console (char *cptr)
+t_bool oc_get_CON (char *cptr)
 {
 char brk = 0;
 uint16 D;
 uint32 A;
 
-sim_debug (OCDEB_TRC, &oc_dev, "oc_get_console : called\n");
+sim_debug (OCDEB_TRC, &oc_dev, "oc_get_CON : called\n");
 
 if (!oc_active)			/* console link configured / open? */
     return FALSE;
 
-if (ocp->IN == 0)		/* no cmd byte from CPB */
+if (!ocp->fm_cp)		/* no cmd byte from CPB */
   return FALSE;
 
-sim_debug (OCDEB_CON, &oc_dev, "oc_get_console : byte = 0x%02X (%c)\n", 
-	ocp->IN, ocp->IN);
+sim_debug (OCDEB_CON, &oc_dev, "oc_get_CON : byte = 0x%02X (%c)\n", 
+	ocp->fm_cp, ocp->fm_cp);
 
-switch (ocp->IN) {
+switch (ocp->fm_cp) {
     case 'H' :					/* HALT/ENABLE->HALT */
 	ocp->HALT = 2;
 	strcpy (cptr, ";halt key down\n");
@@ -647,7 +641,7 @@ switch (ocp->IN) {
 	return FALSE;
 	break;
     }
-ocp->IN = 0;				/* allow for next cmd */
+ocp->fm_cp = 0;				/* allow for next cmd */
 oc_send_cmd('F');			/* update console status leds */
 return TRUE;
 }
@@ -747,9 +741,9 @@ oc_set_port2 (FSTS_1170_18BIT, 0);
 oc_set_port2 (FSTS_1170_22BIT, 0);
  
 	/* determine mapping from current processor state */
-if (*ocp->MMR0 & MMR0_MME) {
+if (MMR0 & MMR0_MME) {
     map = 18;
-    if (*ocp->MMR3 & MMR3_M22E)
+    if (MMR3 & MMR3_M22E)
         map = 22;
     }
 
@@ -811,8 +805,8 @@ switch(cmd) {
   default  :
 	     break;
   }
-ocp->OUT = cmd;
-while(ocp->OUT != 0) usleep(500);
+ocp->to_cp = cmd;
+while(ocp->to_cp != 0) usleep(500);
 }
 
 /*
@@ -835,8 +829,8 @@ if (!oc_active)
 
 sim_debug (OCDEB_TRC, &oc_dev, "oc_get_SWR : called\n");
 
-ocp->OUT = 'Q';
-while(ocp->OUT != 0) usleep(500);
+ocp->to_cp = 'Q';
+while(ocp->to_cp != 0) usleep(500);
 
 sim_debug (OCDEB_SWR, &oc_dev,
 	"oc_get_SWR : swreg bytes = 0x%02X 0x%02X 0x%02X 0x%02X 0x%02X\n",
@@ -873,8 +867,8 @@ sim_debug (OCDEB_TRC, &oc_dev, msg);
 ocp->ACK[0] = 'c';
 ocp->ACK[1] = (uint8)(INP3 + 0x30);
 ocp->ACK[2] = mask;
-ocp->OUT = 'o';
-while(ocp->OUT != 0) usleep(1000);
+ocp->to_cp = 'o';
+while(ocp->to_cp != 0) usleep(1000);
 }
 
 /*
@@ -903,7 +897,7 @@ if (prompt)
 
 for (;;) {
     oc_set_master (TRUE);
-    if (oc_get_console (cptr) == TRUE) { /* poll console for data */
+    if (oc_get_CON (cptr) == TRUE) { /* poll console for data */
         printf ("%s", cptr);
         break;
         }
@@ -954,12 +948,12 @@ return cptr;			/* points to begin of cmd or 0*/
 }
 
 /*
- * Function : oc_halt_status()
+ * Function : oc_check_halt()
  * Note     : Check the value of the ocp->HALT variable
  * Returns  : 0 - if halt mode = 0 or 1
  *          : 1 - if halt mode = 2
  */
-int oc_halt_status (void)
+int oc_check_halt (void)
 {
 if (oc_active)
   if (ocp->HALT == 2)

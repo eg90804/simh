@@ -117,17 +117,20 @@ struct OC_ST {
   uint8  S[5];			/* switches and toggles retrieved state */
   uint8  line[32];		/* serial line to use */
   uint8	 cpu_model;		/* cpu model */
-  uint8  OUT;			/* cmd from console task */
-  uint8  IN;			/* cmd to   console task */
-  int32  *MMR0;			/* pointer to MMU register 0 */
-  int32  *MMR3;			/* pointer to MMU register 3 */
+  uint8  to_cp;			/* cmd to console task */
+  uint8  fm_cp;			/* cmd from console task */
+  int32  MMR0;			/* pointer to MMU register 0 */
+  int32  MMR3;			/* pointer to MMU register 3 */
   uint8  ACK[3];		/* ack toggle data */
   };
 typedef struct OC_ST OC_ST;
+extern uint8 oc_active;
 
 #define OC_ADDR if (oc_active) ocp->A
 #define OC_DATA if (oc_active) ocp->D
 #define OC_IA   if (oc_active) ocp->ind_addr
+#define OC_MMR0 if (oc_active) ocp->MMR0 = MMR0;
+#define OC_MMR3 if (oc_active) ocp->MMR3 = MMR3;
 #define oc_toggle_clear() if (oc_active) oc_send_cmd('a')
 
 struct SERPORT {
@@ -150,11 +153,11 @@ t_stat oc_svc (UNIT *uptr);
 
 /* function prototypes OC */
 
+int     oc_check_halt (void);
 void    oc_clear_halt (void);
+t_bool  oc_get_CON (char *cptr);
 int     oc_get_SWR (void);
-t_bool  oc_get_console (char *cptr);
 t_bool  oc_get_halt (void);
-int     oc_halt_status (void);
 t_bool  oc_poll (SERHANDLE port, int amount);
 uint32  oc_read_A (void);
 uint16  oc_read_D (void);
@@ -166,7 +169,7 @@ void    oc_set_port2 (uint8 flag, t_bool action);
 void    oc_set_ringprot (int value);
 void    oc_send_cmd (uint8 cmd);
 void    oc_send_ack (uint8 mask);
-void    oc_wait (t_bool flag);
+void    oc_set_wait (t_bool flag);
 
 #endif /* OC_DEFS */
 

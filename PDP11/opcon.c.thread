@@ -262,14 +262,12 @@ if ((p = sim_open_serial (tptr, NULL, &r)) != ((SERHANDLE)(void *)-1)) { /* port
 memset (&oc_ctl, 0, sizeof(OC_ST));		/* init OC control block */
 oc_ctl.first_exam = TRUE;
 oc_ctl.first_dep = TRUE;
-oc_ctl.HALT=2;				/* Assume HALT is set for now */
 
 oc_active = TRUE;				/* mark as available */
 
+cmdp = "p5";
 if (cpu_model == MOD_1145)
     cmdp = "p4";
-else
-    cmdp = "p5";
 
 if (write (oc_serport.port, cmdp, 2) != 2) {
     printf ("OC    : Error sending config type to the console\n");
@@ -315,6 +313,7 @@ if ((r = pthread_create(&oc_ctl.t_thr, NULL, &oc_thread, (void *)&oc_ctl.t_end))
     sim_close_serial (p);
     return(-1);
     }
+while (oc_ctl.A[0] != 0xFF) usleep(1000);
 #endif
 
 return SCPE_OK;
@@ -464,8 +463,6 @@ CONST char *const text =
 "\n"
 "   sim> ATTACH OC connect=/dev/ttyS1\n"
 "\n"
-" Valid port numbers are from 0 thru 31\n"
-"\n"
 " An optional serial port configuration string may be present after the port\n"
 " name.  If present, it must be separated from the port name with a semicolon\n"
 " and has this form:\n"
@@ -489,7 +486,7 @@ CONST char *const text =
 "\n"
 "   sim> DETACH OC\n"
 "\n"
-" This will  disable any communication to the console processor as well.\n"
+" This will close the communication link to the console processor.\n"
 "\n"
 ;
 
@@ -798,9 +795,9 @@ if (read (oc_serport.port, &c, 1) != 1 &&
 sim_debug (OCDEB_SWR, &oc_dev, "oc_get_RTR : byte = 0x%02X\n", c);
 
 if (cpu_model == MOD_1145)
-    oc_ctl.S[INP3] = (uint32)c;
+    oc_ctl.S[INP3] = c;
 else
-    oc_ctl.S[INP5] = (uint32)c;
+    oc_ctl.S[INP5] = c;
 
 return 0;
 }
@@ -1242,6 +1239,8 @@ oc_ctl.PORT1 = status;
 void *oc_thread(void *end_thr)
 {
 sim_debug (OCDEB_TRC, &oc_dev, "oc_run_thread : called\n");
+
+oc_ctl.A[0] = 0xFF;		/* signal main thread */
 
 while (*(int*)end_thr == 0) {
     if (oc_ctl.HALT == 0)		/* if 0, we are not interactive */

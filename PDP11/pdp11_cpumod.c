@@ -312,7 +312,7 @@ DEVICE sys_dev = {
 t_stat SR_rd (int32 *data, int32 pa, int32 access)
 {
 #ifdef OPCON
-if (cpu_model == MOD_1170) {
+if (cpu_model == MOD_1145 || cpu_model == MOD_1170) {
     oc_get_SWR();
     SR = oc_read_D();
     }

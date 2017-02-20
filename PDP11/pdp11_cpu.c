@@ -755,6 +755,7 @@ reason = 0;
 
 #ifdef OPCON
 if (cpu_model == MOD_1145 || cpu_model == MOD_1170) {
+    OC_MMR0
     if (oc_check_halt () == TRUE) {
         oc_toggle_clear ();
         oc_set_port1 (FSTS_RUN, 0);
@@ -869,6 +870,8 @@ while (reason == 0)  {
         }
 #ifdef OPCON
     if (cpu_model == MOD_1145 || cpu_model == MOD_1170) {
+        OC_MMR0
+        OC_MMR3
         if (oc_check_halt ()) {
            stop_cpu = 1;
            sim_interval = 0;
@@ -2553,6 +2556,8 @@ set_r_display (rs, cm);
 #ifdef OPCON
         /* during HALT, general register R0 contents are displayed. */
 if (cpu_model == MOD_1145 || cpu_model == MOD_1170) {
+    OC_MMR0
+    OC_MMR3
     oc_set_mmu ();
     oc_set_ringprot (cm);
     oc_set_master (FALSE);
