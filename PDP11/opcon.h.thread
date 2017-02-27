@@ -51,19 +51,18 @@
 #endif
 
 /* Shared function/status port LEDs definitions */
-#define FSTS_RUN                0x80
+#define FSTS_RUN		0x80
+#define FSTS_MASTER		0x40
+#define FSTS_INDDATA		0x04
+#define FSTS_USER		0x03
+#define FSTS_SUPER		0x01		/*  value 0x02 is all 3 OFF */
+#define FSTS_KERNEL		0x00
 
 /* STAT_1_OUTPORT 11/70 */
 /* out3  [2] |  RUN  | MASTER| PAUSE |ADRSERR| PARERR|INDDATA|MMR0[1]|MMR0[0]*/
-#define FSTS_1170_RUN           0x80
-#define FSTS_1170_MASTER	0x40
 #define FSTS_1170_PAUSE	        0x20
 #define FSTS_1170_ADRSERR	0x10
 #define FSTS_1170_PARERR	0x08
-#define FSTS_1170_INDDATA	0x04
-#define FSTS_1170_USER	        0x03
-#define FSTS_1170_SUPER	        0x01		/*  value 0x02 is all 3 OFF */
-#define FSTS_1170_KERNEL	0x00
 
 /* STAT_2_OUTPORT 11/70 */
 /* out2  [1] |       |       |       | PARHI | PARLO | 22BIT | 18BIT | 16BIT */
@@ -75,14 +74,8 @@
 
 /* STAT_1_OUTPORT 11/45 (11/50 & 11/55)	*/
 /* out6  [5] |  RUN  | MASTER|ADRSERR| PAUSE |       |INDATA |MMR0[1]|MMR0[0] */
-#define FSTS_1145_RUN           0x80
-#define FSTS_1145_MASTER        0x40
 #define FSTS_1145_ADRSERR       0x20
 #define FSTS_1145_PAUSE	        0x10
-#define FSTS_1145_INDDATA       0x04
-#define FSTS_1145_USER	        0x03
-#define FSTS_1145_SUPER	        0x01		/*  value 0x02 is all 3 OFF */
-#define FSTS_1145_KERNEL        0x00
 
 /* STAT_2_OUTPORT 11/45, 11/50 & 11/55  --> not used */
 
@@ -166,7 +159,7 @@ t_bool  oc_get_CON (char *cptr);
 t_bool  oc_get_HLT (void);
 int     oc_get_RTR (void);
 int     oc_get_SWR (void);
-t_bool  oc_poll (int port, int amount);
+t_bool  oc_poll (SERHANDLE channel, int amount);
 uint32  oc_read_A (void);
 uint16  oc_read_D (void);
 char   *oc_read_line_p (char *prompt, char *cptr, int32 size, FILE *stream, int32 do_echo);

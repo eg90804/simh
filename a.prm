@@ -1,9 +1,0 @@
-set cpu 11/70 4m fpp
-set clk 50hz
-
-set dz enable
-set rq enable
-set rq0 noauto
-att rq0 /home/eg90804/simh/rsx11mp.dsk
-
-

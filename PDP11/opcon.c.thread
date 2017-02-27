@@ -96,59 +96,7 @@ extern char *do_position (void);
 extern int32 sim_quiet;			/* Quiet output mode */
 extern int32 MMR0, MMR3;		/* MMU registers */
 
-/* Defines */
-#define INP1			0
-#define INP2			1
-#define INP3			2
-#define INP4			3
-#define INP5			4
-#define SWR_00_07_PORT	     INP1	/* SWITCH REGISTER 7-0 */
-#define SWR_08_15_PORT	     INP2	/* SWITCH REGISTER 15-8 */
-#define SWR_16_22_PORT	     INP3	/* SWITCH REGISTER 16-22 */
-
 #define QUERY_SWR_BYTES		5	/* # bytes sent by Query command */
-
-/* 11/45 switches / ports, etc. */
-#define SW_PL_1145	     0x80	/* key switch  bitfield */
-#define SW_HE_1145	     0x01	/* HALT bitfield */
-
-/* 11/70 switches / ports, etc. */
-#define SW_PL_1170	     0x80	/* key switch bitfield */
-#define SW_HE_1170	     0x40	/* HALT bitfield */
-
-/* DISPLAY ADDRESS rotary switch for 11/45 & 11/70 */
-#define DSPA_PROGPHY	     0x00	/* PROG PHY */
-#define DSPA_KERNEL_D	     0x01	/* KERNEL D */
-#define DSPA_KERNEL_I	     0x02	/* KERNEL I */
-#define DSPA_CONSPHY	     0x03	/* CONS PHY */
-#define DSPA_SUPER_D	     0x04	/* SUPER D */
-#define DSPA_SUPER_I	     0x05	/* SUPER I */
-#define DSPA_USER_D	     0x06	/* USER D */
-#define DSPA_USER_I	     0x07	/* USER I */
-#define DSPA_MASK	     0x07	/* mask for DSPA range */
-
-/* DISPLAY DATA rotary switch for 11/45 & 11/70 */
-#define DSPD_BUS_REG	     0x00	/* BUS REG */
-#define DSPD_DATA_PATHS	     0x01	/* DATA PATHS */
-#define DSPD_DISP_REG	     0x02	/* DISPLAY REGISTER */
-#define DSPD_MU_ADRS	     0x03	/* uADRS FPP/CPU */
-#define DSPD_MASK	     0x03	/* mask for DSPA range */
-
-/* Ack_toggle flag definitions */
-#define ACK_DEPO	     0x40
-#define ACK_CONT	     0x08
-#define ACK_LOAD	     0x04
-#define ACK_START	     0x02
-#define ACK_EXAM	     0x01
-#define ACK_MASK	     0x4F
-
-/* Definitions copied from pdp11_defs.h, including it directly causes errors. */
-#define MMR0_MME	  0000001	/* 18 bit MMU enabled */
-#define MMR3_M22E	      020	/* 22 bit MMU enabled */
-#define MD_KER		        0	/* protection mode - KERNEL */
-#define MD_SUP		        1	/* protection mode - SUPERVISOR */
-#define MD_UND		        2	/* protection mode - UNDEFINED */
-#define MD_USR		        3	/* protection mode - USER */
 
 /* Debug levels for the OC device */
 #define OCDEB_CON	      001	/* console input */
@@ -593,7 +541,7 @@ sim_debug (OCDEB_TRC, &oc_dev, "oc_get_CON : called\n");
 if (!oc_active)				/* console link configured / open? */
     return FALSE;
 
-if (oc_poll (oc_serport.port, 10000) == (t_bool)FALSE ||	/* wait 10 msec for input */
+if (oc_poll (&oc_serport, 10000) == (t_bool)FALSE ||	/* wait 10 msec for input */
     read (oc_serport.port, &c, 1) != 1 || 
     c == 0)
     return FALSE;
@@ -787,7 +735,7 @@ if (write (oc_serport.port, &c, 1) != 1) {
     return -1;
     }
 
-while (1) { if (oc_poll (oc_serport.port, 1000) == (t_bool)TRUE) break; }
+while (1) { if (oc_poll (&oc_serhandle, 1000) == (t_bool)TRUE) break; }
 if (read (oc_serport.port, &c, 1) != 1 &&
         errno != EAGAIN && errno != EWOULDBLOCK)
     return -1;
@@ -828,7 +776,7 @@ if (write (oc_serport.port, &c, 1) != 1) {
 
 	/* retrieve the input port data from the console processor */
 for (x = 0; x < QUERY_SWR_BYTES; x++) {
-    while (1) { if (oc_poll (oc_serport.port, 1000) == (t_bool)TRUE) break; }
+    while (1) { if (oc_poll (&oc_serport, 1000) == (t_bool)TRUE) break; }
     c = 0;
     if (read (oc_serport.port, &c, 1) != 1 &&
         	errno != EAGAIN && errno != EWOULDBLOCK)
@@ -934,6 +882,9 @@ return (oc_ctl.S[SWR_08_15_PORT] * 256 + oc_ctl.S[SWR_00_07_PORT]);
 char *oc_read_line_p (char *prompt, char *cptr, int32 size, FILE *stream, int32 do_echo)
 {
 char *tptr = cptr, key_entry = 0;
+SERPORT cons0, cons1;
+
+cons0.port = 0;
  
 sim_debug (OCDEB_TRC, &oc_dev, "oc_read_line_p : called\n");
 
@@ -949,7 +900,7 @@ for (;;) {
           }
       }
 
-    if (oc_poll (0, 10000) == (t_bool)TRUE &&	/* wait for data on keyboard */
+    if (oc_poll (&cons0, 10000) == (t_bool)TRUE &&	/* wait for data on keyboard */
         read (0, &key_entry, 1) > 0) {
         if (key_entry == '\b' && *tptr > *cptr) {	/* backspace */
             *tptr--;
@@ -1330,7 +1281,7 @@ else {
  * Returns  : 0 : no error
  *            1 : hit detected
  */
-t_bool oc_poll (int port, int p)
+t_bool oc_poll (SERHANDLE channel, int p)
 {
 fd_set s;
 struct timeval t;
@@ -1339,11 +1290,11 @@ t.tv_sec = 0;
 t.tv_usec = p;
 
 FD_ZERO (&s);
-FD_SET (port, &s);
+FD_SET (channel->port, &s);
 
 select (FD_SETSIZE, &s, NULL, NULL, &t);
 
-if (FD_ISSET (port, &s))
+if (FD_ISSET (channel->port, &s))
     return TRUE;
 
 return FALSE;
