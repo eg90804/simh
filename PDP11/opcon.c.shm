@@ -103,11 +103,11 @@ OC_ST	*ocp;				/* OC device control block */
 /* Debug flags & keywords for the OC device */
 DEBTAB oc_debug[] = {
     { "CON", OCDEB_CON },		/* used in oc_get_CON */
-    { "STS", OCDEB_STS },		/* used in oc_send_cmd (status) */
+    { "STS", OCDEB_STS },		/* used in oc_send_CMD (status) */
     { "SWR", OCDEB_SWR },		/* used in oc_get_SWR */
     { "SVC", OCDEB_SVC },		/* used in oc_svc */
     { "TRC", OCDEB_TRC },		/* used in all major entry points */
-    { "UPD", OCDEB_UPD },		/* used in oc_send_cmd (update)*/
+    { "UPD", OCDEB_UPD },		/* used in oc_send_CMD (update)*/
     { 0 }
     };
 
@@ -430,7 +430,7 @@ if (cpu_model == MOD_1145)
 else
   ocp->S[INP5] = ocp->S[INP5] & (~SW_HE_1170);
  
-oc_send_cmd('R', 0);	/* clear all toggles and clear HALT */
+oc_send_CMD('R', 0);	/* clear all toggles and clear HALT */
 }
 
 /*
@@ -469,7 +469,7 @@ sim_debug (OCDEB_CON, &oc_dev, "oc_get_CON : byte = %c\n", ocp->fm_cp);
 
 switch (ocp->fm_cp) {
     case 'c' :					/* CONTINU */
-	oc_send_cmd ('O', ACK_CONT);
+	oc_send_CMD ('O', ACK_CONT);
 	ocp->fm_cp = 0;
 	if (ocp->HALT == 2)
 	    strcpy (cptr, "step\n");		/* STEP when HALT is down */
@@ -519,11 +519,11 @@ switch (ocp->fm_cp) {
 		ocp->act_data = oc_read_D ();	/* get 'data' data */
 		ocp->first_exam = TRUE;
 		ocp->first_dep = FALSE;
-		oc_send_cmd('B', 0); 	/* send A & D */
+		oc_send_CMD('B', 0); 	/* send A & D */
 		sprintf (cptr, "deposit %08o %06o\n", ocp->act_addr, ocp->act_data);
 		}
 	    }
-	oc_send_cmd ('O', ACK_DEPO);		/* ack */
+	oc_send_CMD ('O', ACK_DEPO);		/* ack */
 	break;
     case 'l' :					/* LOAD ADDRS */
 	if (cpu_model == MOD_1145)
@@ -534,9 +534,9 @@ switch (ocp->fm_cp) {
 	ocp->first_dep = TRUE;
 	ocp->first_exam = TRUE;
 	ocp->act_addr = oc_read_A ();
-	oc_send_cmd('A', 0);	/* send address to display */
+	oc_send_CMD('A', 0);	/* send address to display */
 	sprintf (cptr, ";load address %08o\n", ocp->act_addr);
-	oc_send_cmd ('O', ACK_LOAD) ;
+	oc_send_CMD ('O', ACK_LOAD) ;
 	break;
     case 's' :					/* START */
 	if (ocp->HALT == 2) {
@@ -546,7 +546,7 @@ switch (ocp->fm_cp) {
 	    }
 	else
 	    sprintf (cptr, "run %08o\n", ocp->act_addr);
-//	oc_send_cmd ('O', ACK_START);
+//	oc_send_CMD ('O', ACK_START);
 	ocp->fm_cp = 0;
 	oc_clear_halt ();
 	return TRUE;
@@ -574,10 +574,10 @@ switch (ocp->fm_cp) {
 	    ocp->first_exam = FALSE;
 	    ocp->first_dep = TRUE;
 	    ocp->act_data = (uint16)M[(ocp->act_addr >> 1)];
-	    oc_send_cmd('B', 0);
+	    oc_send_CMD('B', 0);
 	    sprintf (cptr, "examine %08o\n", ocp->act_addr); 
 	    }
-	oc_send_cmd ('O', ACK_EXAM);
+	oc_send_CMD ('O', ACK_EXAM);
 	break;
     default :			/* stray byte? ignore and clear it */
     	ocp->fm_cp = 0;
@@ -834,33 +834,33 @@ ocp->PORT1 = status;
 }
 
 /*
- * Function : oc_send_cmd()
+ * Function : oc_send_CMD()
  * Note     : Send a single command to the console task.
  * Returns  : Nothing
  */
-void oc_send_cmd(uint8 cmd, uint8 mask)
+void oc_send_CMD(uint8 cmd, uint8 mask)
 {
 if (!oc_active) return;
 
 switch(cmd) {
-  case 'A' : sim_debug(OCDEB_TRC, &oc_dev, "oc_send_cmd (A): address %08o\n",
+  case 'A' : sim_debug(OCDEB_TRC, &oc_dev, "oc_send_CMD (A): address %08o\n",
 		ocp->act_addr);
 	     break;
   case 'B' : sim_debug(OCDEB_UPD, &oc_dev,
-		"oc_send_cmd (A&D) : A:0x%08o D:0x%06o\n", 
+		"oc_send_CMD (A&D) : A:0x%08o D:0x%06o\n", 
 		ocp->act_addr, ocp->act_data);
 	     break;
-  case 'C' : sim_debug (OCDEB_TRC, &oc_dev, "oc_send_cmd (clr all toggles)\n");
+  case 'C' : sim_debug (OCDEB_TRC, &oc_dev, "oc_send_CMD (clr all toggles)\n");
 	     break;
   case 'F' : sim_debug(OCDEB_STS, &oc_dev, 
-		"oc_send_cmd (status) : b1:0x%02X, b2:0x%02X\n",
+		"oc_send_CMD (status) : b1:0x%02X, b2:0x%02X\n",
 		ocp->PORT1, ocp->PORT2);
 	     break;
-  case 'O' : sim_debug (OCDEB_TRC, &oc_dev, "oc_send_cmd : called, mask = %d\n",
+  case 'O' : sim_debug (OCDEB_TRC, &oc_dev, "oc_send_CMD : called, mask = %d\n",
   		mask);
              ocp->ACK = mask;
              break;
-  case 'R' : sim_debug (OCDEB_TRC, &oc_dev, "oc_send_cmd (clr HALT & clr all toggles)\n");
+  case 'R' : sim_debug (OCDEB_TRC, &oc_dev, "oc_send_CMD (clr HALT & clr all toggles)\n");
 	     break;
   default  :
 	     break;
