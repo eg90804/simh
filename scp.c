@@ -6644,19 +6644,23 @@ do {
         /* Set RUN light on or off, other leds too, depending on model */
       if (oc_check_halt ()) {
           r = SCPE_STOP;
-          oc_toggle_clear ();
-          oc_set_port1 (FSTS_RUN, 0);
-          if (cpu_model == MOD_1145)
-              oc_set_port1 (FSTS_1145_PAUSE, 1);
-          else
-              oc_set_port1 (FSTS_1170_PAUSE, 1);
+          if (oc_active) {
+              oc_toggle_clear ();
+              oc_set_port1 (FSTS_RUN, 0);
+              if (cpu_model == MOD_1145)
+                  oc_set_port1 (FSTS_1145_PAUSE, 1);
+              else
+                  oc_set_port1 (FSTS_1170_PAUSE, 1);
+            }
 	}
       else  {
-          oc_set_port1 (FSTS_RUN, 1);
-          if (cpu_model == MOD_1145)
-              oc_set_port1 (FSTS_1145_PAUSE, 0);
-          else
-              oc_set_port1 (FSTS_1170_PAUSE, 0);
+          if (oc_active) {
+	      oc_set_port1 (FSTS_RUN, 1);
+              if (cpu_model == MOD_1145)
+                  oc_set_port1 (FSTS_1145_PAUSE, 0);
+              else
+                  oc_set_port1 (FSTS_1170_PAUSE, 0);
+            }
           r = sim_instr ();
         }
 #else

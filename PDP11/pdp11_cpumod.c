@@ -313,11 +313,11 @@ t_stat SR_rd (int32 *data, int32 pa, int32 access)
 {
 #ifdef OPCON
 extern volatile int32 stop_cpu;
-if (cpu_model == MOD_1145 || cpu_model == MOD_1170) {
+if (oc_active) {
     /* System III & V do apparently perform a lot of SWR reads! */
     if (oc_check_halt())	/* only when running interactive */
         oc_get_SWR();
-    SR = oc_read_D();	/* else use auto updated via console process */
+    SR = oc_get_DTA();	/* get data from switch position fields */
     }
 #endif
 
@@ -329,7 +329,7 @@ t_stat DR_wr (int32 data, int32 pa, int32 access)
 {
 DR = data;
 #ifdef OPCON
-OC_DATA[DISP_DR] = (uint16)DR;
+if (oc_active) ocp->D[DISP_DR] = (uint16)data;
 #endif
 
 return SCPE_OK;
@@ -488,7 +488,7 @@ switch ((pa >> 1) & 017) {                              /* decode pa<4:1> */
 #ifdef OPCON
     case 014:
         ODD_IGN(data);
-        OC_DATA[DISP_FPP] = (uint16)(MBRK = data);
+        if (oc_active) ocp->D[DISP_FPP] = (uint16)(MBRK = data);
         return SCPE_OK;
 #endif
 
@@ -665,13 +665,13 @@ switch ((pa >> 1) & 017) {                              /* decode pa<4:1> */
 
     case 010:                                           /* low size */
 #ifdef OPCON
-        oc_set_port2(FSTS_1170_PARLO, 1);   /* technically : never called */
+        if (oc_active) oc_set_port2(FSTS_1170_PARLO, 1);   /* technically : never called */
 #endif
         return SCPE_OK;
 
     case 011:                                           /* high size */
 #ifdef OPCON
-        oc_set_port2(FSTS_1170_PARHI, 1);   /* technically : never called */
+        if (oc_active) oc_set_port2(FSTS_1170_PARHI, 1);   /* technically : never called */
 #endif
         return SCPE_OK;
 
@@ -683,7 +683,7 @@ switch ((pa >> 1) & 017) {                              /* decode pa<4:1> */
         ODD_IGN (data);
         MBRK = data & MBRK70_WR;
 #ifdef OPCON
-        OC_DATA[DISP_FPP] = (uint16)(MBRK);
+        if (oc_active) ocp->D[DISP_FPP] = (uint16)(MBRK);
 #endif
         return SCPE_OK;
 

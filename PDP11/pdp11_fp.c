@@ -294,7 +294,7 @@ dstspec = IR & 077;
 qdouble = FPS & FPS_D;
 lenf = qdouble? QUAD: LONG;
 #ifdef OPCON
-OC_DATA[DISP_FPP] = (uint16)FPS;
+if (oc_active) ocp->D[DISP_FPP] = (uint16)FPS;
 #endif
 
 switch ((IR >> 8) & 017) {                              /* decode IR<11:8> */
@@ -586,7 +586,7 @@ switch ((IR >> 8) & 017) {                              /* decode IR<11:8> */
         }                                               /* end switch fop */
 
 #ifdef OPCON
-OC_DATA[DISP_FPP] = (uint16)FPS;
+if (oc_active) ocp->D[DISP_FPP] = (uint16)FPS;
 #endif
 
 /* Now process any general register modification */

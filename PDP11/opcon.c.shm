@@ -42,9 +42,9 @@
  * oc_show()		: show status of the device (link)
  * oc_svc()		: service routine
  
- * oc_read_A()		: extract address from swr data array
- * oc_read_D()		: extract data from swr data array
+ * oc_get_ADR()		: extract address from swr data array
  * oc_get_CON()		: get function command
+ * oc_get_DTA()		: extract data from swr data array
  * oc_get_SWR()		: get switch & knob settings from console
  * oc_set_mmu()		: toggle mmu mapping mode (16/18/22 bit)
  * oc_poll()		: pool input channel for data ready
@@ -72,10 +72,6 @@
 #include <termio.h>
 #include <sys/ioctl.h>
 
-#undef OC_ADDR                                                               
-#undef OC_DATA                                                              
-#undef OC_IA
-
 /* Declarations & references for required external routines & variables. */
 extern SERHANDLE sim_open_serial (char *name, TMLN *lp, t_stat *status);
 extern SERHANDLE sim_close_serial (SERHANDLE port);
@@ -86,7 +82,7 @@ extern int32 sim_quiet;			/* Quiet output mode */
 extern int32 MMR0, MMR3;
 
 /* Defines */
-#define msleep(x) usleep(x * 1000)
+#define msleep(n) usleep(n * 1000)
 
 /* Debug levels for the OC device */
 #define OCDEB_CON	      001	/* console input */
@@ -151,7 +147,7 @@ DEVICE oc_dev = {
     &oc_description				/* description function */
     };
 
-t_bool oc_active = 0;
+t_bool oc_active = FALSE;
 uint32 oc_console_pid = 0;
 
 /*   ***   ***   ***   ***   SIMH device integration   ***   ***   ***   ***   *
@@ -289,8 +285,8 @@ if (oc_console_pid != 0) {
   oc_console_pid = 0;
   }
 
-if (ocp != 0) shmdt((char *)ocp);
 oc_active = FALSE;				/* clear receiver flag */
+if (ocp != NULL) shmdt((char *)ocp);
 
 return r;
 }
@@ -406,14 +402,12 @@ return "OC11 : Interface to operator console processor";
  * Returns  : 0 - if halt mode = 0 or 1
  *          : 1 - if halt mode = 2
  */
-int oc_check_halt (void)
+t_bool oc_check_halt (void)
 {
-if (!oc_active) return(0);
+if (oc_active && ocp->HALT)
+  return TRUE;
   
-if (ocp->HALT == 2)
-  return(1);
-  
-return(0);
+return FALSE;
 }
 
 /*
@@ -423,10 +417,8 @@ return(0);
  */
 void oc_clear_halt (void)
 {
-if (!oc_active) return;
- 
 if (cpu_model == MOD_1145)
-  ocp->S[INP4] = ocp->S[INP4] & (~SW_HE_1145);
+  ocp->S[INP5] = ocp->S[INP5] & (~SW_HE_1145);
 else
   ocp->S[INP5] = ocp->S[INP5] & (~SW_HE_1170);
  
@@ -461,8 +453,6 @@ extern uint16 *M;			/* memory */
 
 sim_debug (OCDEB_TRC, &oc_dev, "oc_get_CON : called\n");
 
-if (!oc_active) return FALSE;	
-  
 if (!ocp->fm_cp) return FALSE;		/* link open or no cmd? */
 
 sim_debug (OCDEB_CON, &oc_dev, "oc_get_CON : byte = %c\n", ocp->fm_cp);
@@ -516,7 +506,7 @@ switch (ocp->fm_cp) {
 		}
 	    else {
 		oc_get_SWR ();		/* get actual switch settings */
-		ocp->act_data = oc_read_D ();	/* get 'data' data */
+		ocp->act_data = oc_get_DTA ();	/* get 'data' data */
 		ocp->first_exam = TRUE;
 		ocp->first_dep = FALSE;
 		oc_send_CMD('B', 0); 	/* send A & D */
@@ -533,7 +523,7 @@ switch (ocp->fm_cp) {
         oc_get_SWR ();	/* get actual switch settings */
 	ocp->first_dep = TRUE;
 	ocp->first_exam = TRUE;
-	ocp->act_addr = oc_read_A ();
+	ocp->act_addr = oc_get_ADR ();
 	oc_send_CMD('A', 0);	/* send address to display */
 	sprintf (cptr, ";load address %08o\n", ocp->act_addr);
 	oc_send_CMD ('O', ACK_LOAD) ;
@@ -599,13 +589,11 @@ return TRUE;
  */
 void oc_get_SWR (void)
 {
-if (!oc_active) return;
-
 sim_debug (OCDEB_TRC, &oc_dev, "oc_get_SWR : called\n");
 
-while(ocp->to_cp != 0) usleep(100);	/* wait for prev. cmd to clear */
+while(ocp->to_cp != 0) msleep(1);	/* wait for prev. cmd to clear */
 ocp->to_cp = 'Q';
-while(ocp->to_cp != 0) msleep(1);	/* wait until bytes are there */
+while(ocp->to_cp != 0) msleep(1);	/* wait until bytes are received */
 
 sim_debug (OCDEB_SWR, &oc_dev,
 	"oc_get_SWR : swreg bytes = 0x%02X 0x%02X 0x%02X 0x%02X 0x%02X\n",
@@ -619,8 +607,6 @@ sim_debug (OCDEB_SWR, &oc_dev,
  */
 void oc_set_port1 (uint8 flag, t_bool action)
 {
-if (!oc_active) return;
- 
 if (!action)
     ocp->PORT1 = (ocp->PORT1 & (~flag));
 else
@@ -634,8 +620,6 @@ else
  */
 void oc_set_port2 (uint8 flag, t_bool action)
 {
-if (!oc_active) return;
- 
 if (!action)
     ocp->PORT2 = (ocp->PORT2 & (~flag));
 else
@@ -643,7 +627,7 @@ else
 }
 
 /*
- * Function : oc_read_A ()
+ * Function : oc_get_ADR ()
  * Note     : Get 3 bytes (up to 22 bit switche information as ADDRESS) and
  *            convert it into a 32 bit unsigned integer.
  * 	      A mask is applied for the target cpu address range.
@@ -651,11 +635,9 @@ else
  *            memory is sized to a lower value
  * Returns  : Unsigned long containing the (masked) address switch data
  */
-uint32 oc_read_A ()
+uint32 oc_get_ADR ()
 {
 uint32 A;
-
-if (!oc_active) return 0;
 
 A = ocp->S[SWR_16_22_PORT] * 65536 +
     ocp->S[SWR_08_15_PORT] * 256   +
@@ -678,16 +660,14 @@ return A;
 }
 
 /*
- * Function : oc_read_D ()
+ * Function : oc_get_DTA ()
  * Note     : Get 3 bytes (16 bit switches information as DATA) and convert
  * 	      it into a 16 bit unsigned integer
  * Returns  : Binary value of data switch settings 
  */
-uint16 oc_read_D ()
+uint16 oc_get_DTA ()
 {
-if (!oc_active) return 0;
-    
-return ((ocp->S[SWR_08_15_PORT] * 256 + ocp->S[SWR_00_07_PORT]) & 0xFFFF);
+return (ocp->S[SWR_08_15_PORT] * 256 + ocp->S[SWR_00_07_PORT]);
 }
 
 /*
@@ -704,9 +684,8 @@ return ((ocp->S[SWR_08_15_PORT] * 256 + ocp->S[SWR_00_07_PORT]) & 0xFFFF);
 char *oc_read_line_p (char *prompt, char *cptr, int32 size, FILE *stream, int32 do_echo)
 {
 char *tptr = cptr, key_entry = 0, brk = 0;
-struct SERPORT cons0, cons1;                                                 
+struct SERPORT cons0;                                                 
 cons0.port=0;                                                            
-cons1.port=1;
 
 sim_debug (OCDEB_TRC, &oc_dev, "oc_read_line_p : called\n");
 
@@ -716,23 +695,23 @@ if (prompt)
 for (;;) {
     if (oc_active) {
       oc_set_master (TRUE);
-      if (oc_get_CON (cptr) == TRUE) { /* poll console for data */
+      if (oc_get_CON (cptr) == TRUE) {		/* poll console for data */
           printf ("%s", cptr);
           break;
           }
       }
 
-    if (oc_poll (&cons0, 10000) == 1 &&		/* wait for data on keyboard */
-        sim_read_serial (&cons0, &key_entry, 1, &brk) > 0) {
+    if (oc_poll (&cons0, 10000) == TRUE &&	/* wait for data on keyboard */
+        read(0, &key_entry, 1) > 0) {
         if (key_entry == '\b' && *tptr > *cptr) {	/* backspace */
             *tptr--;
-            sim_write_serial (&cons1, &key_entry, 1);	
-            sim_write_serial (&cons1, " ", 1);
-            sim_write_serial (&cons1, &key_entry, 1);
+            write (1, &key_entry, 1);	
+            write (1, " ", 1);
+            write (1, &key_entry, 1);
             }
         else {					/* regular character */
             *tptr++ = key_entry;		/* store the character */
-            sim_write_serial (&cons1, &key_entry, 1);/* echo the entry to crt */
+            write (1, &key_entry, 1);		/* echo the entry to crt */
             if ((key_entry == '\n') || (key_entry == '\r'))
                 break;
             }
@@ -748,10 +727,10 @@ for (tptr = cptr; tptr < (cptr + size); tptr++) {	/* remove cr or nl */
     }
 
 while (isspace (*cptr))
-    cptr++;			/* absorb spaces */
+    cptr++;						/* absorb spaces */
 
 if (*cptr == ';') {
-    if (do_echo)		/* echo comments if -v */
+    if (do_echo)					/* verbose? */
 	printf ("%s> %s\n", do_position(), cptr);
     if (do_echo && sim_log)
 	fprintf (sim_log, "%s> %s\n", do_position(), cptr);
@@ -760,11 +739,11 @@ if (*cptr == ';') {
 
 if (oc_active) {
   oc_set_master (FALSE);
-  if (ocp->HALT)		/* no stray mode flag */
+  if (ocp->HALT)					/* no stray mode flag */
      stop_cpu = 1;
   }
 
-return cptr;			/* points to begin of cmd or 0*/
+return cptr;					/* points to begin of cmd or 0*/
 }
 
 /*
@@ -775,8 +754,6 @@ return cptr;			/* points to begin of cmd or 0*/
  */
 void oc_set_master (t_bool flag)
 {
-if (!oc_active) return;
-    
 oc_set_port1 (FSTS_MASTER, flag);
 }
 
@@ -824,8 +801,6 @@ void oc_set_ringprot (int value)
 {
 uint8 status;
 
-if (!oc_active) return;
-
 status = ocp->PORT1 | 0x03;
 if (value == MD_KER) status &= 0xFC;
 if (value == MD_SUP) status &= 0xFD;
@@ -840,8 +815,6 @@ ocp->PORT1 = status;
  */
 void oc_send_CMD(uint8 cmd, uint8 mask)
 {
-if (!oc_active) return;
-
 switch(cmd) {
   case 'A' : sim_debug(OCDEB_TRC, &oc_dev, "oc_send_CMD (A): address %08o\n",
 		ocp->act_addr);
@@ -877,8 +850,6 @@ ocp->to_cp = cmd;
  */
 void oc_set_wait (t_bool flag)
 {
-if (!oc_active) return;
-    
 if (cpu_model == MOD_1145) 
   oc_set_port1 (FSTS_1145_PAUSE, !flag);
 else

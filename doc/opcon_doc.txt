@@ -114,28 +114,23 @@ oc_reset	: This routine resets the driver and places the service
 		  It is called from the SIMH software as part of a standard
 		  sequence of calls for any recognised (and activated) device.
 
-oc_svc		: This is the main service routine. The delta time determines
-		  if further action is required. If it is below the minimum
-		  waiting time, only a reschedule is executed.
-		  If the delta is more than the minimum, the address, data &
-		  status field information is sent to the PCP and the HALT
-		  switch setting is checked. The setting of the rotary switches
-		  are retrieved (11/45 & 1170 only) for proper display of
-		  the I & D space values.
-		  NOTE : initially, only an interval of 10 milliseconds was
-			 for the oc_svc routine to ensure that it would be
-			 called that interval. However, after a HALT followed
-			 by an ENABLE & continue command, the timer queue will
-			 have a burst of calls to the service routines and the
-			 serial link would get overloaded. Also the interval
-			 was not that reliable with regards to the accuracy of
-			 the intervals themselves.
-			 The oc_svc service routine now uses a 1 ms interval
-			 and only performs work if sufficient time has passed.
-
 oc_show		: This routine is called to display the state of the oc driver.
 
+oc_svc		: This is the main service routine and is a placeholder in the
+                  SHM & threading models.
+
 The routines (OC driver) :
+
+oc_console      : This is the main service routine for the threading model
+                  A simple switch/case set is used for what to do at which
+                  step count. At regular intervals, a check is done for :
+                    - HALT switch usage
+                    - changes in the 2 rotary knob position
+                    - read the console switches
+
+oc_check_halt   : Checks if the HALT switch is operated
+
+oc_clear_halt   : clears the internal HALT mode processing of opcon code.
 
 oc_read_line_p  : This routine is a replacement for the read_line_p() routine
 		  in the scp.c source file. It calls the oc_get_console
@@ -188,6 +183,8 @@ oc_read_<x>	: The oc_read_<x> routines extract the address or data
 oc_poll		: This routine polls the serial link for possible data waiting.
 		  In a way it is a reduced version of the tmxr poll routine.
 
+oc_thread       : This routine is the main thread loop when uting the threading
+                  model.
 Conversion board.
 The conversion board is the board you have to make yourself. It's only function
 is to route the core-IO input & output lines to the operator console. There is

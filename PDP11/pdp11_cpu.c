@@ -754,44 +754,40 @@ reason = 0;
 */
 
 #ifdef OPCON
-if (cpu_model == MOD_1145 || cpu_model == MOD_1170) {
+if (oc_active) {
     OC_MMR0;
     OC_MMR3;
-    if (oc_check_halt () == TRUE) {
+    if (oc_check_halt ()) {
         oc_toggle_clear ();
         oc_set_port1 (FSTS_RUN, 0);
         if (cpu_model == MOD_1145)
             oc_set_port1 (FSTS_1145_PAUSE, 1);
-        if (cpu_model == MOD_1170)
+        else
             oc_set_port1 (FSTS_1170_PAUSE, 1);
         return(SCPE_STOP);
         }
-    else  {
-        oc_set_port1 (FSTS_RUN, 1);
-        if (cpu_model == MOD_1145)
-            oc_set_port1 (FSTS_1145_PAUSE, 0);
-        if (cpu_model == MOD_1170)
-            oc_set_port1 (FSTS_1170_PAUSE, 0);
-        }
+    oc_set_port1 (FSTS_RUN, 1);
     if (cpu_model == MOD_1145) {
-        oc_set_port1(FSTS_1145_ADRSERR, 0);
+        oc_set_port1 (FSTS_1145_PAUSE, 0);
+        oc_set_port1 (FSTS_1145_ADRSERR, 0);
         abortval = setjmp (save_env);                           /* set abort hdlr */
-        if ((abortval == TRAP_NXM) ||
-            (abortval == TRAP_ODD) ||
-        (abortval == TRAP_MME))
-            oc_set_port1(FSTS_1145_ADRSERR, 1);
-        }
-    else {
-        oc_set_port1(FSTS_1170_ADRSERR, 0);
-        oc_set_port2(FSTS_1170_PARHI, 0);
-        oc_set_port2(FSTS_1170_PARLO, 0);
-        abortval = setjmp (save_env);                           /* set abort hdlr */
-        if (abortval == TRAP_PAR)
-            oc_set_port1(FSTS_1170_PARERR, 1);
         if ((abortval == TRAP_NXM) ||
             (abortval == TRAP_ODD) ||
             (abortval == TRAP_MME))
-            oc_set_port1(FSTS_1170_ADRSERR, 1);
+            oc_set_port1 (FSTS_1145_ADRSERR, 1);
+        }
+    else {
+        oc_set_port1 (FSTS_1170_PAUSE, 0);
+        oc_set_port1 (FSTS_1170_ADRSERR, 0);
+        oc_set_port2 (FSTS_1170_PARHI, 0);
+        oc_set_port2 (FSTS_1170_PARLO, 0);
+        abortval = setjmp (save_env);                           /* set abort hdlr */
+        if (abortval == TRAP_PAR)
+            oc_set_port1 (FSTS_1170_PARERR, 1);
+        if ((abortval == TRAP_NXM) ||
+            (abortval == TRAP_ODD) ||
+            (abortval == TRAP_MME))
+            oc_set_port1 (FSTS_1170_ADRSERR, 1);
         }
     }
 else
@@ -836,7 +832,7 @@ else {
             reason = STOP_SPABORT;
         if (trapea == ~MD_KER) {                        /* kernel stk abort? */
 #ifdef OPCON
-            if (cpu_model == MOD_1145 || cpu_model == MOD_1170) {
+            if (oc_active) {
                 oc_set_mmu ();
                 oc_set_ringprot (cm);
                 if (cpu_model == MOD_1170)
@@ -870,10 +866,10 @@ while (reason == 0)  {
         break;
         }
 #ifdef OPCON
-    if (cpu_model == MOD_1145 || cpu_model == MOD_1170) {
+    if (oc_active) {
         OC_MMR0;
         OC_MMR3;
-        oc_set_port1(FSTS_INDDATA, ocp->ind_addr);
+        oc_set_port1 (FSTS_INDDATA, ocp->ind_addr);
         if (oc_check_halt ()) {
            stop_cpu = 1;
            sim_interval = 0;
@@ -950,7 +946,7 @@ while (reason == 0)  {
 */
 
 #ifdef OPCON
-        if (cpu_model == MOD_1145 || cpu_model == MOD_1170) {
+        if (oc_active) {
             oc_set_wait (FALSE);
             oc_set_master (TRUE);
             oc_set_ringprot (cm);
@@ -1002,7 +998,7 @@ while (reason == 0)  {
     if (tbit)
         setTRAP (TRAP_TRC);
 #ifdef OPCON
-    if (cpu_model == MOD_1145 || cpu_model == MOD_1170)
+    if (oc_active)
         oc_set_wait (wait_state);
 #endif
     if (wait_state) {                                   /* wait state? */
@@ -1061,9 +1057,9 @@ while (reason == 0)  {
     PC = (PC + 2) & 0177777;                            /* incr PC, mod 65k */
 
 #ifdef OPCON
-    if (cpu_model == MOD_1145 || cpu_model == MOD_1170) {
-        OC_ADDR[ADDR_CONPA] = (uint32)PC;
-        OC_DATA[DISP_SHFR] = (uint16)IR;
+    if (oc_active) {
+        ocp->A[ADDR_CONPA] = (uint32)PC;
+        ocp->D[DISP_SHFR] = (uint16)IR;
         oc_set_ringprot (cm);
 /*
         if (oc_check_halt ())  {
@@ -1091,8 +1087,8 @@ while (reason == 0)  {
                     (!CPUT (CPUT_J) || ((MAINT & MAINT_HTRAP) == 0)))
 #ifdef OPCON
                     {
-                      if (cpu_model == MOD_1145 || cpu_model == MOD_1170)
-                          OC_DATA[DISP_SHFR] = (uint16)R[0];
+                      if (oc_active)
+                          ocp->D[DISP_SHFR] = (uint16)R[0];
                       reason = STOP_HALT;
                     }
 #else
@@ -1107,8 +1103,8 @@ while (reason == 0)  {
             case 1:                                     /* WAIT */
                 wait_state = 1;
 #ifdef OPCON
-                if (cpu_model == MOD_1145 || cpu_model == MOD_1170) {
-                    OC_DATA[DISP_SHFR] = (uint16)R[0];
+                if (oc_active) {
+                    ocp->D[DISP_SHFR] = (uint16)R[0];
                     oc_set_wait (TRUE);
                     }
 #endif
@@ -1130,8 +1126,8 @@ while (reason == 0)  {
                     for (i = 0; i < IPL_HLVL; i++)
                         int_req[i] = 0;
 #ifdef OPCON
-                    if (cpu_model == MOD_1145 || cpu_model == MOD_1170) {
-                        OC_DATA[DISP_SHFR] = (uint16)R[0];
+                    if (oc_active) {
+                        ocp->D[DISP_SHFR] = (uint16)R[0];
                         oc_set_mmu ();
                         oc_set_ringprot (cm);
                         }
@@ -1196,8 +1192,8 @@ while (reason == 0)  {
                 JMP_PC (R[dstspec]);
                 R[dstspec] = ReadW (SP | dsenable);
 #ifdef OPCON
-                if (cpu_model == MOD_1145 || cpu_model == MOD_1170)
-                    OC_DATA[DISP_SHFR] = (uint16)R[dstspec];
+                if (oc_active)
+                    ocp->D[DISP_SHFR] = (uint16)R[dstspec];
 #endif
                 if (dstspec != 6)
                     SP = (SP + 2) & 0177777;
@@ -1601,7 +1597,7 @@ while (reason == 0)  {
                 cm = MD_SUP;
                 tbit = 0;
 #ifdef OPCON
-                if (cpu_model == MOD_1145 || cpu_model == MOD_1170) {
+                if (oc_active) {
                   oc_set_mmu ();
                   oc_set_ringprot (cm);
                   }
@@ -1996,8 +1992,8 @@ while (reason == 0)  {
             if (CPUT (HAS_SXS)) {
                 R[srcspec] = (R[srcspec] - 1) & 0177777;
 #ifdef OPCON
-                if (cpu_model == MOD_1145 || cpu_model == MOD_1170)
-		  OC_DATA[DISP_SHFR] = (uint16)R[srcspec];
+                if (oc_active)
+		  ocp->D[DISP_SHFR] = (uint16)R[srcspec];
 #endif
                 if (hst_ent)
                     hst_ent->dst = R[srcspec];
@@ -2349,7 +2345,7 @@ while (reason == 0)  {
                     hst_ent->dst = dst;
                 WriteW (dst, SP | dsenable);
 #ifdef OPCON
-                if (cpu_model == MOD_1145 || cpu_model == MOD_1170) {
+                if (oc_active) {
                   oc_set_mmu ();
                   oc_set_ringprot (cm);
                   }
@@ -2557,7 +2553,7 @@ set_r_display (rs, cm);
 
 #ifdef OPCON
         /* during HALT, general register R0 contents are displayed. */
-if (cpu_model == MOD_1145 || cpu_model == MOD_1170) {
+if (oc_active) {
     OC_MMR0;
     OC_MMR3;
     oc_set_mmu ();
@@ -2567,16 +2563,16 @@ if (cpu_model == MOD_1145 || cpu_model == MOD_1170) {
     if ((reason == STOP_HALT) || (reason == STOP_WAIT) ||
         (reason == SCPE_STOP) || (reason == STOP_VECABORT) ||
         (reason == STOP_SPABORT) ) {
-        OC_ADDR[ADDR_CONPA] = (uint32)saved_PC;
-        OC_DATA[DISP_SHFR] = (uint16)R[0];
+        ocp->A[ADDR_CONPA] = (uint32)saved_PC;
+        ocp->D[DISP_SHFR] = (uint16)R[0];
         }
     else {
       /*
        * during Single Instruction operation, the Processor
        * Status Word is displayed.
        */
-        OC_ADDR[ADDR_CONPA] = (uint32)saved_PC;
-        OC_DATA[DISP_SHFR] = (uint16)PSW;
+        ocp->A[ADDR_CONPA] = (uint32)saved_PC;
+        ocp->D[DISP_SHFR] = (uint16)PSW;
         }
     }
 #endif
@@ -2778,8 +2774,8 @@ if (BPT_SUMM_RD &&
 if (ADDR_IS_MEM (pa))                                   /* memory address? */
 #ifdef OPCON
     {
-    if (cpu_model == MOD_1145 || cpu_model == MOD_1170)
-        OC_DATA[DISP_BR] = (uint16)M[pa >> 1];          /* memory address? */
+    if (oc_active)
+        ocp->D[DISP_BR] = (uint16)RdMemW (pa);          /* memory address? */
     return RdMemW (pa);
     }
 #else
@@ -2876,8 +2872,8 @@ int32 data;
 if (ADDR_IS_MEM (pa))                                   /* memory address? */
 #ifdef OPCON
     {
-    if (cpu_model == MOD_1145 || cpu_model == MOD_1170)
-        OC_DATA[DISP_BR] = (uint16)M[pa >> 1]; 
+    if (oc_active)
+        ocp->D[DISP_BR] = (uint16)RdMemW (pa);
     return RdMemW (pa);
     }
 #else
@@ -2901,8 +2897,8 @@ int32 data;
 if (ADDR_IS_MEM (pa))
 #ifdef OPCON
     {
-      if (cpu_model == MOD_1145 || cpu_model == MOD_1170)
-          OC_DATA[DISP_BR] = (uint16)M[pa >> 1];
+      if (oc_active)
+          ocp->D[DISP_BR] = (uint16)M[pa >> 1];
       return RdMemB (pa);
     }
 #else
@@ -2980,8 +2976,8 @@ void PWriteW (int32 data, int32 pa)
 if (ADDR_IS_MEM (pa)) {                                 /* memory address? */
     WrMemW (pa, data);
 #ifdef OPCON
-    if (cpu_model == MOD_1145 || cpu_model == MOD_1170)
-        OC_DATA[DISP_BR] = (uint16)data;
+    if (oc_active)
+        ocp->D[DISP_BR] = (uint16)data;
 #endif
     return;
     }
@@ -3001,8 +2997,8 @@ void PWriteB (int32 data, int32 pa)
 if (ADDR_IS_MEM (pa)) {                                 /* memory address? */
     WrMemB (pa, data);
 #ifdef OPCON
-    if (cpu_model == MOD_1145 || cpu_model == MOD_1170)
-        OC_DATA[DISP_BR] = (uint16)M[pa >> 1];
+    if (oc_active)
+        ocp->D[DISP_BR] = (uint16) data;	//? M[pa >> 1];
 #endif
     return;
     }             
@@ -3038,9 +3034,9 @@ int32 relocR (int32 va)
 int32 apridx, apr, pa;
 
 #ifdef OPCON
-if (cpu_model == MOD_1145 || cpu_model == MOD_1170) {
-    OC_IA = (t_bool)(va & VA_DS); /* 1 -> 'D' space, 0 -> 'I' space */
-    OC_ADDR[va >> VA_V_DS] = (uint32)(va & VAMASK);
+if (oc_active) {
+    ocp->ind_addr = (t_bool)(va & VA_DS); /* 1 -> 'D' space, 0 -> 'I' space */
+    ocp->A[va >> VA_V_DS] = (uint32)(va & VAMASK);
     }
 #endif
 
@@ -3064,8 +3060,8 @@ else {
         pa = 017600000 | pa;
     }
 #ifdef OPCON
-if (cpu_model == MOD_1145 || cpu_model == MOD_1170) 
-    OC_ADDR[ADDR_PRGPA] = (uint32)pa;
+if (oc_active)
+    ocp->A[ADDR_PRGPA] = (uint32)pa;
 #endif
 return pa;
 }
@@ -3156,9 +3152,9 @@ int32 relocW (int32 va)
 int32 apridx, apr, pa;
 
 #ifdef OPCON
-if (cpu_model == MOD_1145 || cpu_model == MOD_1170)  {
-    OC_IA = (t_bool)(va & VA_DS); /* 1 -> 'D' space, 0 -> 'I' space */
-    OC_ADDR[va >> VA_V_DS] = (uint32)(va & VAMASK);
+if (oc_active)  {
+    ocp->ind_addr = (t_bool)(va & VA_DS); /* 1 -> 'D' space, 0 -> 'I' space */
+    ocp->A[va >> VA_V_DS] = (uint32)(va & VAMASK);
     }
 #endif
 
@@ -3183,8 +3179,8 @@ else {
         pa = 017600000 | pa;
     }
 #ifdef OPCON
-if (cpu_model == MOD_1145 || cpu_model == MOD_1170)  
-    OC_ADDR[ADDR_PRGPA] = (uint32)pa;
+if (oc_active)
+    ocp->A[ADDR_PRGPA] = (uint32)pa;
 #endif
 return pa;
 }
@@ -3285,8 +3281,8 @@ else {
         pa = 017600000 | pa;
     }
 #ifdef OPCON
-if (cpu_model == MOD_1145 || cpu_model == MOD_1170)  
-    OC_ADDR[ADDR_PRGPA] = (uint32)pa;
+if (oc_active)
+    ocp->A[ADDR_PRGPA] = (uint32)pa;
 #endif
 return pa;
 }
@@ -3328,8 +3324,8 @@ switch ((pa >> 1) & 3) {                                /* decode pa<2:1> */
 
     case 0:                                             /* DR */
 #ifdef OPCON
-        if (cpu_model == MOD_1145 || cpu_model == MOD_1170)  
-	    OC_DATA[DISP_DR] = (uint16)(data & cpu_tab[cpu_model].mm0);
+        if (oc_active)  
+	    ocp->D[DISP_DR] = (uint16)(data & cpu_tab[cpu_model].mm0);
 #endif
         return SCPE_NXM;
 
@@ -3339,7 +3335,7 @@ switch ((pa >> 1) & 3) {                                /* decode pa<2:1> */
         data = data & cpu_tab[cpu_model].mm0;
         MMR0 = (MMR0 & ~MMR0_WR) | (data & MMR0_WR);
 #ifdef OPCON
-        if (cpu_model == MOD_1145 || cpu_model == MOD_1170) {
+        if (oc_active) {
 	    oc_set_mmu ();
             oc_set_ringprot (cm);
             }
@@ -3366,7 +3362,7 @@ cpu_bme = (MMR3 & MMR3_BME) && (cpu_opt & OPT_UBM);
 dsenable = calc_ds (cm);
 
 #ifdef OPCON
-if (cpu_model == MOD_1145 || cpu_model == MOD_1170) {
+if (oc_active) {
     oc_set_mmu ();
     oc_set_ringprot (cm);
     }
@@ -3482,7 +3478,7 @@ isenable = calc_is (cm);
 dsenable = calc_ds (cm);
 
 #ifdef OPCON
-if (cpu_model == MOD_1145 || cpu_model == MOD_1170) {
+if (oc_active) {
     oc_set_mmu ();
     oc_set_ringprot (cm);
     }
@@ -3604,7 +3600,7 @@ trap_req = 0;
 wait_state = 0;
 
 #ifdef OPCON
-if (cpu_model == MOD_1145 || cpu_model == MOD_1170) {
+if (oc_active) {
     oc_set_master (TRUE);
     oc_set_wait (FALSE);
     oc_set_mmu ();

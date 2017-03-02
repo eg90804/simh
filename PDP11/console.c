@@ -69,7 +69,7 @@ int oc_read(int fd, char *p, int c, int m)
 /*
 ** Send Address, Data and Port info to console processor.
 */
-int oc_send_ADS(int oc_fd, OC_ST *ocp)
+void oc_send_ADS(int oc_fd, OC_ST *ocp)
 {
   uint8 mask = 0, c[8];
   uint32 A;
@@ -133,7 +133,7 @@ int oc_send_ADS(int oc_fd, OC_ST *ocp)
 /*
 ** Send single Address & Data to CPB.
 */
-int oc_send_AD(int oc_fd, OC_ST *ocp)
+void oc_send_AD(int oc_fd, OC_ST *ocp)
 {
   uint8 mask = 0, c[6];
 
@@ -156,7 +156,7 @@ int oc_send_AD(int oc_fd, OC_ST *ocp)
 /*
 ** Send single Address to CPB.
 */
-int oc_send_A(int oc_fd, OC_ST *ocp)
+void oc_send_A(int oc_fd, OC_ST *ocp)
 {
   uint8 mask = 0, c[4];
 
@@ -177,7 +177,7 @@ int oc_send_A(int oc_fd, OC_ST *ocp)
 /*
 ** Send status info to CPB.
 */
-int oc_send_S(int oc_fd, OC_ST *ocp)
+void oc_send_S(int oc_fd, OC_ST *ocp)
 {
   uint8 c[4];
 
@@ -191,7 +191,7 @@ int oc_send_S(int oc_fd, OC_ST *ocp)
 /*
 ** Check if the HLT switch is flipped.
 */
-int oc_read_HLT(int oc_fd, OC_ST *ocp)
+void oc_read_HLT(int oc_fd, OC_ST *ocp)
 {
   uint8 c;
   
@@ -215,7 +215,7 @@ int oc_read_HLT(int oc_fd, OC_ST *ocp)
 /*
 ** Request rotary knobs settings from CPB.
 */
-int oc_read_RTR(int oc_fd, OC_ST *ocp)
+void oc_read_RTR(int oc_fd, OC_ST *ocp)
 {
   uint8 c = 'R';
 
@@ -233,7 +233,7 @@ int oc_read_RTR(int oc_fd, OC_ST *ocp)
 /*
 ** Request setting of the switches.
 */
-int oc_read_SWR(int oc_fd, OC_ST *ocp)
+void oc_read_SWR(int oc_fd, OC_ST *ocp)
 {
   uint8 c = 'Q';
 
@@ -249,7 +249,7 @@ int oc_read_SWR(int oc_fd, OC_ST *ocp)
 /*
 ** Acknowledge all toggle commands.
 */
-int oc_ack_ALL(int oc_fd, OC_ST *ocp)
+void oc_ack_ALL(int oc_fd, OC_ST *ocp)
 {
   uint8 c = 'i';	/* clear all */
 
@@ -260,7 +260,7 @@ int oc_ack_ALL(int oc_fd, OC_ST *ocp)
 /*
 ** Acknowledge one toggle command using the mask.
 */
-int oc_ack_ONE(int oc_fd, OC_ST *ocp)
+void oc_ack_ONE(int oc_fd, OC_ST *ocp)
 {
   uint8 c[4];
   

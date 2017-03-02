@@ -241,7 +241,7 @@ int32 Map_ReadB (uint32 ba, int32 bc, uint8 *buf)
 uint32 alim, lim, ma;
 
 #ifdef OPCON
-oc_set_master(FALSE);
+if (oc_active) oc_set_master(FALSE);
 #endif
 
 if (ba >= IOPAGEBASE) {
@@ -255,7 +255,7 @@ if (ba >= IOPAGEBASE) {
         bc--;
         }
 #ifdef OPCON
-oc_set_master(TRUE);
+if (oc_active) oc_set_master(TRUE);
 #endif
 
     return bc;
@@ -268,7 +268,7 @@ if (cpu_bme) {                                          /* map enabled? */
         if (!ADDR_IS_MEM (ma))                          /* NXM? err */
 #ifdef OPCON
           {
-	    oc_set_master(TRUE);
+	    if (oc_active) oc_set_master(TRUE);
             return (lim - ba);
           }
 #else
@@ -277,7 +277,7 @@ if (cpu_bme) {                                          /* map enabled? */
         *buf++ = (uint8) RdMemB (ma);                   /* get byte */
         }
 #ifdef OPCON
-    oc_set_master(TRUE);
+    if (oc_active) oc_set_master(TRUE);
 #endif
     return 0;
     }
@@ -288,7 +288,7 @@ else {                                                  /* physical */
         alim = MEMSIZE;
 #ifdef OPCON
     else {
-	oc_set_master(TRUE);
+	if (oc_active) oc_set_master(TRUE);
         return bc;                                     /* no, err */
         }
 #else
@@ -299,7 +299,7 @@ else {                                                  /* physical */
         *buf++ = (uint8) RdMemB (ba);                   /* get byte */
         }
 #ifdef OPCON
-    oc_set_master(TRUE);
+    if (oc_active) oc_set_master(TRUE);
 #endif
     return (lim - alim);
     }
@@ -310,7 +310,7 @@ int32 Map_ReadW (uint32 ba, int32 bc, uint16 *buf)
 uint32 alim, lim, ma;
 
 #ifdef OPCON
-oc_set_master(FALSE);
+if (oc_active) oc_set_master(FALSE);
 #endif
 
 if (ba >= IOPAGEBASE) {
@@ -318,7 +318,7 @@ if (ba >= IOPAGEBASE) {
     if ((ba & 1) || (bc & 1))
 #ifdef OPCON
         {
-	oc_set_master(TRUE);
+	if (oc_active) oc_set_master(TRUE);
         return bc;
         }
 #else
@@ -333,7 +333,7 @@ if (ba >= IOPAGEBASE) {
         bc -= 2;
         }
 #ifdef OPCON
-    oc_set_master(TRUE);
+    if (oc_active) oc_set_master(TRUE);
 #endif
     return bc;
     }
@@ -345,7 +345,7 @@ if (cpu_bme) {                                          /* map enabled? */
         if (!ADDR_IS_MEM (ma))                          /* NXM? err */
 #ifdef OPCON
             {
-	    oc_set_master(TRUE);
+	    if (oc_active) oc_set_master(TRUE);
             return (lim - ba);
             }
 #else
@@ -354,7 +354,7 @@ if (cpu_bme) {                                          /* map enabled? */
         *buf++ = (uint16) RdMemW (ma);
         }
 #ifdef OPCON
-    oc_set_master(TRUE);
+    if (oc_active) oc_set_master(TRUE);
 #endif
     return 0;
     }
@@ -368,13 +368,13 @@ else {                                                  /* physical */
         *buf++ = (uint16) RdMemW (ba);
         }
 #ifdef OPCON
-    oc_set_master(TRUE);
+    if (oc_active) oc_set_master(TRUE);
 #endif
 
     return (lim - alim);
     }
 #ifdef OPCON
-oc_set_master(TRUE);
+if (oc_active) oc_set_master(TRUE);
 #endif
 }
 
@@ -383,7 +383,7 @@ int32 Map_WriteB (uint32 ba, int32 bc, const uint8 *buf)
 uint32 alim, lim, ma;
 
 #ifdef OPCON
-oc_set_master(FALSE);
+if (oc_active) oc_set_master(FALSE);
 #endif
 
 if (ba >= IOPAGEBASE) {
@@ -394,7 +394,7 @@ if (ba >= IOPAGEBASE) {
         bc--;
         }
 #ifdef OPCON
-    oc_set_master(TRUE);
+    if (oc_active) oc_set_master(TRUE);
 #endif
 
     return bc;
@@ -407,7 +407,7 @@ if (cpu_bme) {                                          /* map enabled? */
         if (!ADDR_IS_MEM (ma))                          /* NXM? err */
 #ifdef OPCON
             {
-	    oc_set_master(TRUE);
+	    if (oc_active) oc_set_master(TRUE);
             return (lim - ba);
             }
 #else
@@ -416,7 +416,7 @@ if (cpu_bme) {                                          /* map enabled? */
         WrMemB (ma, ((uint16) *buf++));
         }
 #ifdef OPCON
-    oc_set_master(TRUE);
+    if (oc_active) oc_set_master(TRUE);
 #endif
     return 0;
     }
@@ -427,7 +427,7 @@ else {                                                  /* physical */
         alim = MEMSIZE;
 #ifdef OPCON
     else {
-	oc_set_master(TRUE);
+	if (oc_active) oc_set_master(TRUE);
         return bc;                                     /* no, err */
         }
 #else
@@ -437,7 +437,7 @@ else {                                                  /* physical */
         WrMemB (ba, ((uint16) *buf++));
         }
 #ifdef OPCON
-    oc_set_master(TRUE);
+    if (oc_active) oc_set_master(TRUE);
 #endif
     return (lim - alim);
     }
@@ -448,14 +448,14 @@ int32 Map_WriteW (uint32 ba, int32 bc, const uint16 *buf)
 uint32 alim, lim, ma;
 
 #ifdef OPCON
-oc_set_master(FALSE);
+if (oc_active) oc_set_master(FALSE);
 #endif
 
 if (ba >= IOPAGEBASE) {
     if ((ba & 1) || (bc & 1))
 #ifdef OPCON
         {
-	oc_set_master(TRUE);
+	if (oc_active) oc_set_master(TRUE);
         return bc;
         }
 #else
@@ -468,7 +468,7 @@ if (ba >= IOPAGEBASE) {
         bc -= 2;
         }
 #ifdef OPCON
-    oc_set_master(TRUE);
+    if (oc_active) oc_set_master(TRUE);
 #endif
     return bc;
 }
@@ -480,7 +480,7 @@ if (cpu_bme) {                                          /* map enabled? */
         if (!ADDR_IS_MEM (ma))                          /* NXM? err */
 #ifdef OPCON
             {
-	    oc_set_master(TRUE);
+	    if (oc_active) oc_set_master(TRUE);
             return (lim - ba);
             }
 #else
@@ -489,7 +489,7 @@ if (cpu_bme) {                                          /* map enabled? */
         WrMemW (ma, *buf++);
         }
 #ifdef OPCON
-    oc_set_master(TRUE);
+    if (oc_active) oc_set_master(TRUE);
 #endif
     return 0;
     }
@@ -500,7 +500,7 @@ else {                                                  /* physical */
         alim = MEMSIZE;
 #ifdef OPCON
     else {
-	oc_set_master(TRUE);
+	if (oc_active) oc_set_master(TRUE);
         return bc;                                     /* no, err */
         }
 #else
@@ -510,12 +510,12 @@ else {                                                  /* physical */
         WrMemW (ba, *buf++);
         }
 #ifdef OPCON
-    oc_set_master(TRUE);
+    if (oc_active) oc_set_master(TRUE);
 #endif
     return (lim - alim);
     }
 #ifdef OPCON
-oc_set_master(TRUE);
+if (oc_active) oc_set_master(TRUE);
 #endif
 }
 
