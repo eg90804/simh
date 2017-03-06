@@ -56,6 +56,7 @@
  * oc_get_RTR()			: get rotary knob settings
  * oc_get_SWR()			: get switch & knob settings from console
  * oc_poll()			: pool input channel for data ready
+ * oc_read()			: read bytes blocking/non blocking
  * oc_send_A()			: send address data
  * oc_send_AD()			: combined send address & data
  * oc_send_ADS()		: send address/data/status
@@ -92,7 +93,6 @@ extern char *do_position (void);
 extern int32 sim_quiet;			/* Quiet output mode */
 extern int32 MMR0, MMR3;		/* MMU registers */
 
-#define QUERY_SWR_BYTES		5	/* # bytes sent by Query command */
 #define msleep(n) usleep(n * 1000);	/* Millisecond sleep */
 
 /* Debug levels for the OC device */
@@ -160,6 +160,7 @@ DEVICE oc_dev = {
     };
 
 t_bool oc_active = FALSE;
+struct termios *oc_tty;
 SERHANDLE oc_serhandle;
 
 /*   ***   ***   ***   ***   SIMH device integration   ***   ***   ***   ***   */
@@ -206,8 +207,27 @@ if ((ocp = (OC_ST *)malloc(sizeof(OC_ST))) == NULL) {
     printf ("OC    : data structure malloc error (%d).\n", errno);
     return -1;
     }
-  
-  
+
+				/* Configure port reading	      */
+if ((oc_tty = (struct termios *)malloc(sizeof(struct termios))) == NULL) {
+    printf("OCC : failed to alloc space for console processor link (%d)\n", errno);
+    return -1;
+    }
+if (tcgetattr(oc_serhandle->port, oc_tty)) {
+    printf("OCC : failed to get line attributes (%d)\n", errno);
+    free (oc_tty);
+    return -1;
+    }
+fcntl(oc_serhandle->port, F_SETFL);
+cfmakeraw(oc_tty);
+oc_tty->c_cc[VMIN] = 0;
+oc_tty->c_cc[VTIME] = 0;			/* no timeout */
+if (tcsetattr(oc_serhandle->port, TCSANOW, oc_tty)) {
+    printf("OCC : failed to set attributes for raw mode\n");
+    free (oc_tty);
+    return -1;
+    }
+
 memset (ocp, 0, sizeof(OC_ST));		/* init OC control block */
 ocp->first_exam = TRUE;
 ocp->first_dep = TRUE;
@@ -256,7 +276,7 @@ else
     if (!sim_quiet)
 	printf ("LOCK\n");
 
-#if defined(OPCON_ASYNC)
+#if defined(OPCON_THR)
 if ((r = pthread_create(&ocp->.t_thr, NULL, &oc_thread, (void *)&ocp->t_end)) != 0) {
     fprintf(stderr, "Error creating OC thread, return code %d\n", r);
     sim_close_serial (oc_serhandle);
@@ -279,10 +299,11 @@ t_stat r = 0;
 
 if (!oc_active)	return SCPE_OK;
 
-#if defined(OPCON_ASYNC)
+#if defined(OPCON_THR)
 ocp->t_end = 1;
 msleep(20);					/* allow oc_th to flush */
 pthread_join(ocp->t_thr, NULL);		/* cleanup console sending thread */
+free (oc_tty);
 #else
 sim_cancel(&oc_unit);
 #endif
@@ -307,7 +328,7 @@ return r;
 t_stat oc_reset (DEVICE *dptr)
 {
 sim_debug (OCDEB_TRC, &oc_dev, "oc_reset : called\n");
-#if !defined(OPCON_ASYNC)
+#if defined(OPCON_ASYNC)
 sim_activate_after (&oc_unit, OC_INTERVAL);     /* queue service routine */
 #endif
 return SCPE_OK;
@@ -320,11 +341,11 @@ return SCPE_OK;
 
 t_stat oc_svc (UNIT *uptr)
 {
+#if defined(OPCON_ASYNC)
 uint32 A, R;
 uint16 D;
 static uint32 resched;
 
-#if !defined(OPCON_ASYNC)
 sim_debug (OCDEB_TRC, &oc_dev, "oc_svc : called\n");
 R = sim_os_msec();
 sim_debug (OCDEB_SVC, &oc_dev, "oc_svc : delta = %d\n", R - resched);
@@ -336,9 +357,9 @@ if ((R - resched) < OC_MINVAL) {         /* sufficient time passed by? */
     }
 resched = R;					/* set as new marker */
 oc_console ();
-#endif    
 //sim_activate_after (uptr, OC_INTERVAL);         /* reschedule */
 sim_activate_after (uptr, 1000);         /* reschedule */
+#endif    
 
 return SCPE_OK;
 }
@@ -692,8 +713,7 @@ uint8 c = 0;
 
 sim_debug (OCDEB_TRC, &oc_dev, "oc_get_HLT : called\n");
 
-if (oc_poll (oc_serhandle, 1000) == (t_bool)FALSE ||
-    read (oc_serhandle->port, &c, 1) != 1 || c == 0)
+if (oc_read (oc_serhandle, &c, 1, 1) != 1)
     return FALSE;
 
 sim_debug (OCDEB_HLT, &oc_dev, "oc_get_HLT : got (%2X:%c)\n", c, c);
@@ -727,9 +747,7 @@ sim_debug (OCDEB_TRC, &oc_dev, "oc_get_RTR : called\n");
 if (write (oc_serhandle->port, &c, 1) != 1)
     printf("OC    : Error sending 'ROTARY' command.\n");
 
-while (1) { if (oc_poll (oc_serhandle, 1000) == (t_bool)TRUE) break; }
-if (read (oc_serhandle->port, &c, 1) != 1 &&
-        errno != EAGAIN && errno != EWOULDBLOCK)
+if (oc_read (oc_serhandle, &c, 1, 0) != 1)
     return -1;
 
 sim_debug (OCDEB_SWR, &oc_dev, "oc_get_RTR : byte = 0x%02X\n", c);
@@ -753,7 +771,6 @@ return 0;
 int oc_get_SWR (void)
 {
 uint8 c = 'Q';
-uint32 K;
 int x;
 
 sim_debug (OCDEB_TRC, &oc_dev, "oc_get_SWR : called\n");
@@ -761,15 +778,8 @@ sim_debug (OCDEB_TRC, &oc_dev, "oc_get_SWR : called\n");
 if (write (oc_serhandle->port, &c, 1) != 1)
     printf("OC    : Error sending 'QUERY' command.\n");
 
-	/* retrieve the input port data from the console processor */
-for (x = 0; x < QUERY_SWR_BYTES; x++) {
-    while (1) { if (oc_poll (oc_serhandle, 1000) == (t_bool)TRUE) break; }
-    c = 0;
-    if (read (oc_serhandle->port, &c, 1) != 1 &&
-        	errno != EAGAIN && errno != EWOULDBLOCK)
-        return -1;
-    ocp->S[x] = c;
-    }
+if (oc_read (oc_serhandle, ocp->S, 5, 0) != 5)
+    return -1;
 
 sim_debug (OCDEB_SWR, &oc_dev,
     "oc_get_SWR : swreg bytes = 0x%02X 0x%02X 0x%02X 0x%02X 0x%02X\n",
@@ -919,6 +929,31 @@ if (oc_active) {
       stop_cpu = 1;
   }
 return cptr;			/* points to begin of cmd or 0*/
+}
+
+/*
+ * Function : oc_read()
+ * Note     : Read bytes in blocking or non blocking mode.
+ * Returns  : 0 or number of bytes read.
+ */
+int oc_read(SERHANDLE ch, char *b, int c, int m)
+{
+  int x;
+  extern int errno;
+  extern struct termios *oc_tty;
+
+  if (m == 0) {
+    oc_tty->c_cc[VMIN] = c;		/* Must read 'c' chars	*/
+    tcsetattr(ch->port, TCSANOW, oc_tty);
+    }
+    
+  if ((x = read(ch->port, b, c)) != c && errno != EAGAIN && errno != EWOULDBLOCK)
+    x = 0;
+    
+  oc_tty->c_cc[VMIN] = 0;		/* reset to previous state	*/
+  tcsetattr(ch->port, TCSANOW, oc_tty);
+
+  return(x);
 }
 
 /*
@@ -1141,7 +1176,7 @@ if (value == MD_USR) status &= 0xFF;
 ocp->PORT1 = status;
 }
 
-#if defined(OPCON_ASYNC)
+#if defined(OPCON_THR)
 /*
  * Function : oc_thread
  * Note     : Service routine for the threading solution

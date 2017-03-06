@@ -247,6 +247,7 @@ uint16  oc_get_DTA (void);
 t_bool  oc_get_HLT (void);
 int     oc_get_RTR (void);
 t_bool  oc_poll (SERHANDLE channel, int amount);
+int     oc_read (SERHANDLE channel, char *b, int c, int d);
 char   *oc_read_line_p (char *prompt, char *cptr, int32 size, FILE *stream, int32 do_echo);
 void    oc_set_master (t_bool flag);
 void    oc_set_mmu (void);
