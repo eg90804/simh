@@ -6600,30 +6600,48 @@ for (i = 1; (dptr = sim_devices[i]) != NULL; i++) {     /* reposition all */
     }
 stop_cpu = 0;
 sim_is_running = 1;                                     /* flag running */
+#ifdef OPCON
+if (oc_active) ocp->sir = 1;
+#endif
 if (sim_ttrun () != SCPE_OK) {                          /* set console mode */
     sim_is_running = 0;                                 /* flag idle */
+#ifdef OPCON
+    if (oc_active) ocp->sir = 0;
+#endif
     sim_ttcmd ();
     return SCPE_TTYERR;
     }
 if ((r = sim_check_console (30)) != SCPE_OK) {          /* check console, error? */
     sim_is_running = 0;                                 /* flag idle */
+#ifdef OPCON
+    if (oc_active) ocp->sir = 0;
+endif
     sim_ttcmd ();
     return r;
     }
 if (signal (SIGINT, int_handler) == SIG_ERR) {          /* set WRU */
     sim_is_running = 0;                                 /* flag idle */
+#ifdef OPCON
+    if (oc_active) ocp->sir = 0;
+#endif
     sim_ttcmd ();
     return SCPE_SIGERR;
     }
 #ifdef SIGHUP
 if (signal (SIGHUP, int_handler) == SIG_ERR) {          /* set WRU */
     sim_is_running = 0;                                 /* flag idle */
+#ifdef OPCON
+    if (oc_active) ocp->sir = 0;
+#endif
     sim_ttcmd ();
     return SCPE_SIGERR;
     }
 #endif
 if (signal (SIGTERM, int_handler) == SIG_ERR) {         /* set WRU */
     sim_is_running = 0;                                 /* flag idle */
+#ifdef OPCON
+    if (oc_active) ocp->sir = 0;
+#endif
     sim_ttcmd ();
     return SCPE_SIGERR;
     }
@@ -6705,6 +6723,9 @@ do {
     } while (1);
 
 sim_is_running = 0;                                     /* flag idle */
+#ifdef OPCON
+if (oc_active) ocp->sir = 0;
+#endif
 sim_stop_timer_services ();                             /* disable wall clock timing */
 sim_ttcmd ();                                           /* restore console */
 sim_brk_clrall (BRK_TYP_DYN_STEPOVER);                  /* cancel any step/over subroutine breakpoints */
