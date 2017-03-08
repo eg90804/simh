@@ -133,6 +133,9 @@
 #include "sim_timer.h"
 #include <ctype.h>
 #include <math.h>
+#ifdef OPCON
+#include "opcon.h"
+#endif
 
 #ifdef __HAIKU__
 #define nice(n) ({})
@@ -1337,7 +1340,7 @@ for (i=(was_active_command ? sim_rem_cmd_active_line : 0);
                     rem->single_mode = FALSE;       /* enter multi command mode */
                     sim_is_running = 0;
 #ifdef OPCON
-                    if (oc_active) ocp_sir = 0;
+                    if (oc_active) ocp->sir = 0;
 #endif
                     sim_rem_collect_all_registers ();
                     sim_stop_timer_services ();
