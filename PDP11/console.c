@@ -305,6 +305,7 @@ int main(int ac, char **av)
 #ifdef DEBUG
   if (debug) {
     printf("Dump of ocp :\n");
+    printf("  sim_is_running     : %d\n", ocp->sir);
     printf("  First exam address : 0x%08o\n", ocp->first_exam);
     printf("  First dep address  : 0x%08o\n", ocp->first_dep);
     printf("  Invalid address    : 0x%08o\n", ocp->inv_addr);
@@ -420,7 +421,7 @@ int main(int ac, char **av)
 **
 */
   while(end_prog == 0) {
-    if (!ocp->HALT) {			/* if 0, we are not interactive       */
+    if (ocp->sir) {			/* if 1, we are not interactive       */
       c = 0;
       if (ocp->to_cp == 'Q') {				/* SWR requested?     */
 #ifdef DEBUG
