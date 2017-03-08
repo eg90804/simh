@@ -153,6 +153,7 @@
 
 /* OC controlblock */
 struct OC_ST {
+  t_bool sir;           /* copy of sim_is_running value */
   t_bool first_exam;		/* flag: first EXAM action */
   t_bool first_dep;		/* flag: first DEP action */
   t_bool ind_addr;		/* flag: indirect address */
