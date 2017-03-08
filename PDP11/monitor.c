@@ -48,6 +48,7 @@ int main(int ac, char **av)
     printf("\e[H");
     printf("Contents of ocp data structure :\n");
     printf("  Line = %s, cpu = %d\n", ocp->line, ocp->cpu_model);
+    printf("  sim_is_running     : %d\n", ocp_sir);
     printf("  First exam address : 0x%06X\n", ocp->first_exam);
     printf("  First dep address  : 0x%06X\n", ocp->first_dep);
     printf("  Invalid address    : 0x%06X\n", ocp->inv_addr);
