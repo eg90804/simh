@@ -133,9 +133,6 @@
 #include "sim_timer.h"
 #include <ctype.h>
 #include <math.h>
-#ifdef OPCON
-#include "opcon.h"
-#endif
 
 #ifdef __HAIKU__
 #define nice(n) ({})
@@ -1315,9 +1312,6 @@ for (i=(was_active_command ? sim_rem_cmd_active_line : 0);
             }
         else {
             sim_is_running = 0;
-#ifdef OPCON
-            if (oc_active) ocp->sir = 0;
-#endif
             sim_rem_collect_all_registers ();
             sim_stop_timer_services ();
             for (j=0; j < sim_rem_con_tmxr.lines; j++) {
@@ -1339,9 +1333,6 @@ for (i=(was_active_command ? sim_rem_cmd_active_line : 0);
                 if (c == sim_int_char) {            /* ^E (the interrupt character) must start continue mode console interaction */
                     rem->single_mode = FALSE;       /* enter multi command mode */
                     sim_is_running = 0;
-#ifdef OPCON
-                    if (oc_active) ocp->sir = 0;
-#endif
                     sim_rem_collect_all_registers ();
                     sim_stop_timer_services ();
                     stat = SCPE_STOP;
@@ -1693,9 +1684,6 @@ for (i=(was_active_command ? sim_rem_cmd_active_line : 0);
                     tmxr_send_buffered_data (lpj);
                     }
                 sim_is_running = 1;
-#ifdef OPCON
-                if (oc_active) ocp->sir = 1;
-#endif
                 sim_start_timer_services ();
                 }
             if (cmdp && (cmdp->action == &x_continue_cmd))

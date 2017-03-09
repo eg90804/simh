@@ -40,8 +40,8 @@
 
 //#define DEBUG_OC 1 				/* enable/disable debug */
 
-//#define OPCON_SHM				/* select this for shm model */
-#define OPCON_THR				/* select this for pthread model */
+#define OPCON_SHM				/* select this for shm model */
+//#define OPCON_THR				/* select this for pthread model */
 
 #ifndef MOD_1145
 #define MOD_1145	10

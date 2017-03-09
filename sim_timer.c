@@ -88,6 +88,9 @@
 #include "sim_defs.h"
 #include <ctype.h>
 #include <math.h>
+#ifdef OPCON
+#include "opcon.h"
+#endif
 
 #define SIM_INTERNAL_CLK (SIM_NTIMERS+(1<<30))
 #define SIM_INTERNAL_UNIT sim_internal_timer_unit
@@ -2184,6 +2187,9 @@ return SCPE_OK;
 
 void sim_start_timer_services (void)
 {
+#ifdef OPCON
+if (oc_active) ocp->sir = sim_is_running;
+#endif
 sim_debug (DBG_TRC, &sim_timer_dev, "sim_start_timer_services()\n");
 _rtcn_configure_calibrated_clock (sim_calb_tmr);
 #if defined(SIM_ASYNCH_CLOCKS)
@@ -2277,6 +2283,9 @@ if (sim_timer_thread_running) {
     }
 else
     pthread_mutex_unlock (&sim_timer_lock);
+#endif
+#ifdef OPCON
+if (oc_active) ocp->sir = sim_is_running;
 #endif
 }
 
