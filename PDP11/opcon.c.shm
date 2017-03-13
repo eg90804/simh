@@ -304,12 +304,14 @@ return SCPE_OK;
 
 /*
  * Function : oc_svc()
- * Note	    : does nothing.
+ * Note	    : set the ocp->sir flag at boot/run/go
  *
  * Returns  : SCPE_OK
  */
 t_stat oc_svc (UNIT *uptr)
 {
+if (oc_active) ocp->sir = 1;
+sim_activate_after (uptr, 250000);
 return SCPE_OK;
 }
 
