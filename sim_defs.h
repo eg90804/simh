@@ -552,6 +552,8 @@ struct UNIT {
     int32               u6;                             /* device specific */
     void                *up7;                           /* device specific */
     void                *up8;                           /* device specific */
+    uint16              us9;                            /* device specific */
+    uint16              us10;                           /* device specific */
     void                *tmxr;                          /* TMXR linkage */
     t_bool              (*cancel)(UNIT *);
     double              usecs_remaining;                /* time balance for long delays */
@@ -1050,7 +1052,7 @@ extern int32 sim_asynch_inst_latency;
 /* This approach uses intrinsics to manage access to the link list head     */
 /* sim_asynch_queue.  This implementation is a completely lock free design  */
 /* which avoids the potential ABA issues.                                   */
-#define AIO_QUEUE_MODE "Lock free asynchronous event queue access"
+#define AIO_QUEUE_MODE "Lock free asynchronous event queue"
 #define AIO_INIT                                                  \
     do {                                                          \
       int tmr;                                                    \
@@ -1082,7 +1084,7 @@ extern int32 sim_asynch_inst_latency;
 #define AIO_ILOCK AIO_LOCK
 #define AIO_IUNLOCK AIO_UNLOCK
 #define AIO_QUEUE_VAL (UNIT *)(InterlockedCompareExchangePointer((void * volatile *)&sim_asynch_queue, (void *)sim_asynch_queue, NULL))
-#define AIO_QUEUE_SET(val, queue) (UNIT *)(InterlockedCompareExchangePointer((void * volatile *)&sim_asynch_queue, (void *)val, queue))
+#define AIO_QUEUE_SET(newval, oldval) (UNIT *)(InterlockedCompareExchangePointer((void * volatile *)&sim_asynch_queue, (void *)newval, oldval))
 #define AIO_UPDATE_QUEUE sim_aio_update_queue ()
 #define AIO_ACTIVATE(caller, uptr, event_time)                                   \
     if (!pthread_equal ( pthread_self(), sim_asynch_main_threadid )) {           \
@@ -1093,7 +1095,7 @@ extern int32 sim_asynch_inst_latency;
 /* This approach uses a pthread mutex to manage access to the link list     */
 /* head sim_asynch_queue.  It will always work, but may be slower than the  */
 /* lock free approach when using USE_AIO_INTRINSICS                         */
-#define AIO_QUEUE_MODE "Lock based asynchronous event queue access"
+#define AIO_QUEUE_MODE "Lock based asynchronous event queue"
 #define AIO_INIT                                                  \
     do {                                                          \
       int tmr;                                                    \
@@ -1123,7 +1125,7 @@ extern int32 sim_asynch_inst_latency;
 #define AIO_ILOCK AIO_LOCK
 #define AIO_IUNLOCK AIO_UNLOCK
 #define AIO_QUEUE_VAL sim_asynch_queue
-#define AIO_QUEUE_SET(val, queue) (sim_asynch_queue = val)
+#define AIO_QUEUE_SET(newval, oldval) ((sim_asynch_queue = newval),oldval)
 #define AIO_UPDATE_QUEUE sim_aio_update_queue ()
 #define AIO_ACTIVATE(caller, uptr, event_time)                         \
     if (!pthread_equal ( pthread_self(), sim_asynch_main_threadid )) { \

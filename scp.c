@@ -347,9 +347,9 @@ AIO_ILOCK;
 if (AIO_QUEUE_VAL != QUEUE_LIST_END) {  /* List !Empty */
     UNIT *q, *uptr;
     int32 a_event_time;
-    do
+    do {                                /* Grab current queue */
         q = AIO_QUEUE_VAL;
-        while (q != AIO_QUEUE_SET(QUEUE_LIST_END, q));  /* Grab current queue */
+        } while (q != AIO_QUEUE_SET(QUEUE_LIST_END, q));
     while (q != QUEUE_LIST_END) {       /* List !Empty */
         sim_debug (SIM_DBG_AIO_QUEUE, sim_dflt_dev, "Migrating Asynch event for %s after %d instructions\n", sim_uname(q), q->a_event_time);
         ++migrated;
@@ -2948,6 +2948,7 @@ if (flag >= 0) {                                        /* Only bump nesting fro
                     sim_on_check[sim_do_depth] = 0;
                     sim_brk_clract ();                  /* defang breakpoint actions */
                     --sim_do_depth;                     /* unwind nesting */
+                    fclose (fpin);
                     return SCPE_MEM;
                     }
                 strcpy(sim_on_actions[sim_do_depth][i], sim_on_actions[sim_do_depth-1][i]);
@@ -3535,7 +3536,8 @@ else {
     else {                                              /* not reg, check for memory */
         if (sim_dfdev && sim_vm_parse_addr)             /* get addr */
             addr = sim_vm_parse_addr (sim_dfdev, gbuf, &gptr);
-        else addr = (t_addr) strtotv (gbuf, &gptr, sim_dfdev->dradix);
+        else
+            addr = (t_addr) strtotv (gbuf, &gptr, sim_dfdev ? sim_dfdev->dradix : sim_dflt_dev->dradix);
         if (gbuf == gptr)                               /* error? */
             return SCPE_NXREG;
         }
@@ -3779,7 +3781,7 @@ while (1) {
         }
     }
 sim_do_echo = saved_do_echo;                            /* restore echo mode */
-fseek(sim_gotofile, fpos, SEEK_SET);                    /* resture start position */
+fseek(sim_gotofile, fpos, SEEK_SET);                    /* restore start position */
 sim_goto_line[sim_do_depth] = saved_goto_line;          /* restore start line number */
 return SCPE_ARG;
 }
@@ -4544,46 +4546,46 @@ if (flag) {
     t_bool idle_capable;
     uint32 os_ms_sleep_1, os_tick_size;
 
-    fprintf (st, "\n\tSimulator Framework Capabilities:");
-    fprintf (st, "\n\t\t%s", sim_si64);
-    fprintf (st, "\n\t\t%s", sim_sa64);
-    fprintf (st, "\n\t\t%s", eth_capabilities());
+    fprintf (st, "\n    Simulator Framework Capabilities:");
+    fprintf (st, "\n        %s", sim_si64);
+    fprintf (st, "\n        %s", sim_sa64);
+    fprintf (st, "\n        %s", eth_capabilities());
     idle_capable = sim_timer_idle_capable (&os_ms_sleep_1, &os_tick_size);
-    fprintf (st, "\n\t\tIdle/Throttling support is %savailable", idle_capable ? "" : "NOT ");
+    fprintf (st, "\n        Idle/Throttling support is %savailable", idle_capable ? "" : "NOT ");
     if (sim_disk_vhd_support())
-        fprintf (st, "\n\t\tVirtual Hard Disk (VHD) support");
+        fprintf (st, "\n        Virtual Hard Disk (VHD) support");
     if (sim_disk_raw_support())
-        fprintf (st, "\n\t\tRAW disk and CD/DVD ROM support");
+        fprintf (st, "\n        RAW disk and CD/DVD ROM support");
 #if defined (SIM_ASYNCH_IO)
-    fprintf (st, "\n\t\tAsynchronous I/O support");
+    fprintf (st, "\n        Asynchronous I/O support (%s)", AIO_QUEUE_MODE);
 #endif
 #if defined (SIM_ASYNCH_MUX)
-    fprintf (st, "\n\t\tAsynchronous Multiplexer support");
+    fprintf (st, "\n        Asynchronous Multiplexer support");
 #endif
 #if defined (SIM_ASYNCH_CLOCKS)
-    fprintf (st, "\n\t\tAsynchronous Clock support");
+    fprintf (st, "\n        Asynchronous Clock support");
 #endif
 #if defined (SIM_FRONTPANEL_VERSION)
-    fprintf (st, "\n\t\tFrontPanel API Version %d", SIM_FRONTPANEL_VERSION);
+    fprintf (st, "\n        FrontPanel API Version %d", SIM_FRONTPANEL_VERSION);
 #endif
-    fprintf (st, "\n\tHost Platform:");
+    fprintf (st, "\n    Host Platform:");
 #if defined (__GNUC__) && defined (__VERSION__)
-    fprintf (st, "\n\t\tCompiler: GCC %s", __VERSION__);
+    fprintf (st, "\n        Compiler: GCC %s", __VERSION__);
 #elif defined (__clang_version__)
-    fprintf (st, "\n\t\tCompiler: clang %s", __clang_version__);
+    fprintf (st, "\n        Compiler: clang %s", __clang_version__);
 #elif defined (_MSC_FULL_VER) && defined (_MSC_BUILD)
-    fprintf (st, "\n\t\tCompiler: Microsoft Visual C++ %d.%02d.%05d.%02d", _MSC_FULL_VER/10000000, (_MSC_FULL_VER/100000)%100, _MSC_FULL_VER%100000, _MSC_BUILD);
+    fprintf (st, "\n        Compiler: Microsoft Visual C++ %d.%02d.%05d.%02d", _MSC_FULL_VER/10000000, (_MSC_FULL_VER/100000)%100, _MSC_FULL_VER%100000, _MSC_BUILD);
 #if defined(_DEBUG)
     build = " (Debug Build)";
 #else
     build = " (Release Build)";
 #endif
 #elif defined (__DECC_VER)
-    fprintf (st, "\n\t\tCompiler: DEC C %c%d.%d-%03d", ("T SV")[((__DECC_VER/10000)%10)-6], __DECC_VER/10000000, (__DECC_VER/100000)%100, __DECC_VER%10000);
+    fprintf (st, "\n        Compiler: DEC C %c%d.%d-%03d", ("T SV")[((__DECC_VER/10000)%10)-6], __DECC_VER/10000000, (__DECC_VER/100000)%100, __DECC_VER%10000);
 #elif defined (SIM_COMPILER)
 #define S_xstr(a) S_str(a)
 #define S_str(a) #a
-    fprintf (st, "\n\t\tCompiler: %s", S_xstr(SIM_COMPILER));
+    fprintf (st, "\n        Compiler: %s", S_xstr(SIM_COMPILER));
 #undef S_str
 #undef S_xstr
 #endif
@@ -4611,23 +4613,24 @@ if (flag) {
 #else
     cpp = "C";
 #endif
-    fprintf (st, "\n\t\tSimulator Compiled as %s%s%s on %s at %s", cpp, arch, build, __DATE__, __TIME__);
+    fprintf (st, "\n        Simulator Compiled as %s%s%s on %s at %s", cpp, arch, build, __DATE__, __TIME__);
 #endif
-    fprintf (st, "\n\t\tMemory Access: %s Endian", sim_end ? "Little" : "Big");
-    fprintf (st, "\n\t\tMemory Pointer Size: %d bits", (int)sizeof(dptr)*8);
-    fprintf (st, "\n\t\t%s", sim_toffset_64 ? "Large File (>2GB) support" : "No Large File support");
-#if defined(USE_SIM_VIDEO)
     fprintf (st, "\n\t\tSDL Video support: %s", vid_version());
+    fprintf (st, "\n        Memory Access: %s Endian", sim_end ? "Little" : "Big");
+    fprintf (st, "\n        Memory Pointer Size: %d bits", (int)sizeof(dptr)*8);
+    fprintf (st, "\n        %s", sim_toffset_64 ? "Large File (>2GB) support" : "No Large File support");
+#if defined(USE_SIM_VIDEO)
+    fprintf (st, "\n        SDL Video support: %s", vid_version());
 #endif
 #if defined (HAVE_PCREPOSIX_H)
-    fprintf (st, "\n\t\tPCRE RegEx support for EXPECT commands");
+    fprintf (st, "\n        PCRE RegEx support for EXPECT commands");
 #elif defined (HAVE_REGEX_H)
-    fprintf (st, "\n\t\tRegEx support for EXPECT commands");
+    fprintf (st, "\n        RegEx support for EXPECT commands");
 #else
-    fprintf (st, "\n\t\tNo RegEx support for EXPECT commands");
+    fprintf (st, "\n        No RegEx support for EXPECT commands");
 #endif
-    fprintf (st, "\n\t\tOS clock resolution: %dms", os_tick_size);
-    fprintf (st, "\n\t\tTime taken by msleep(1): %dms", os_ms_sleep_1);
+    fprintf (st, "\n        OS clock resolution: %dms", os_tick_size);
+    fprintf (st, "\n        Time taken by msleep(1): %dms", os_ms_sleep_1);
 #if defined(__VMS)
     if (1) {
         char *arch = 
@@ -4638,7 +4641,7 @@ if (flag) {
 #else
             "VAX";
 #endif
-        fprintf (st, "\n\t\tOS: OpenVMS %s %s", arch, __VMS_VERSION);
+        fprintf (st, "\n        OS: OpenVMS %s %s", arch, __VMS_VERSION);
         }
 #elif defined(_WIN32)
     if (1) {
@@ -4660,9 +4663,9 @@ if (flag) {
                 } while (osversion[0] == '\0');
             _pclose (f);
             }
-        fprintf (st, "\n\t\tOS: %s", osversion);
-        fprintf (st, "\n\t\tArchitecture: %s%s%s, Processors: %s", arch, proc_arch3264 ? " on " : "", proc_arch3264 ? proc_arch3264  : "", procs);
-        fprintf (st, "\n\t\tProcessor Id: %s, Level: %s, Revision: %s", proc_id ? proc_id : "", proc_level ? proc_level : "", proc_rev ? proc_rev : "");
+        fprintf (st, "\n        OS: %s", osversion);
+        fprintf (st, "\n        Architecture: %s%s%s, Processors: %s", arch, proc_arch3264 ? " on " : "", proc_arch3264 ? proc_arch3264  : "", procs);
+        fprintf (st, "\n        Processor Id: %s, Level: %s, Revision: %s", proc_id ? proc_id : "", proc_level ? proc_level : "", proc_rev ? proc_rev : "");
         }
 #else
     if (1) {
@@ -4678,7 +4681,7 @@ if (flag) {
                 } while (osversion[0] == '\0');
             pclose (f);
             }
-        fprintf (st, "\n\t\tOS: %s", osversion);
+        fprintf (st, "\n        OS: %s", osversion);
         }
 #endif
     }
@@ -5107,30 +5110,33 @@ if ((*cptr != '/') || (0 == memcmp (cptr, "./", 2)) || (0 == memcmp (cptr, "../"
     strcat (WholeName, cptr);
     sim_trim_endspc (WholeName);
     }
+else
+    strcpy (WholeName, cptr);
 while ((c = strstr (WholeName, "/./")))
-    strcpy (c + 1, c + 3);
+    memmove (c + 1, c + 3, 1 + strlen (c + 3));
 while ((c = strstr (WholeName, "//")))
-    strcpy (c + 1, c + 2);
+    memmove (c + 1, c + 2, 1 + strlen (c + 2));
 while ((c = strstr (WholeName, "/../"))) {
     char *c1;
     c1 = c - 1;
     while ((c1 >= WholeName) && (*c1 != '/'))
         c1 = c1 - 1;
-    strcpy (c1, c + 3);
+    memmove (c1, c + 3, 1 + strlen (c + 3));
     while (0 == memcmp (WholeName, "/../", 4))
-        strcpy (WholeName, WholeName+3);
+        memmove (WholeName, WholeName+3, 1 + strlen (WholeName+3));
     }
 c = strrchr (WholeName, '/');
 if (c) {
-    memcpy (DirName, WholeName, c-WholeName);
-    DirName[c-WholeName] = '\0';
+    memmove (DirName, WholeName, 1+c-WholeName);
+    DirName[1+c-WholeName] = '\0';
     }
-else
+else {
 #if defined (VMS)
     getcwd (WholeName, PATH_MAX, 0);
 #else
     getcwd (WholeName, PATH_MAX);
 #endif
+    }
 cptr = WholeName;
 #if defined (HAVE_GLOB)
 memset (&paths, 0, sizeof(paths));
@@ -5363,15 +5369,19 @@ t_stat ssh_break (FILE *st, const char *cptr, int32 flg)
 char gbuf[CBUFSIZE], *aptr, abuf[4*CBUFSIZE];
 CONST char *tptr, *t1ptr;
 DEVICE *dptr = sim_dflt_dev;
-UNIT *uptr = dptr->units;
+UNIT *uptr;
 t_stat r;
-t_addr lo, hi, max = uptr->capac - 1;
+t_addr lo, hi, max;
 int32 cnt;
 
 if (sim_brk_types == 0)
     return sim_messagef (SCPE_NOFNC, "No breakpoint support in this simulator\n");
-if ((dptr == NULL) || (uptr == NULL))
+if (dptr == NULL)
     return SCPE_IERR;
+uptr = dptr->units;
+if (uptr == NULL)
+    return SCPE_IERR;
+max = uptr->capac - 1;
 abuf[sizeof(abuf)-1] = '\0';
 strncpy (abuf, cptr, sizeof(abuf)-1);
 cptr = abuf;
@@ -5825,7 +5835,7 @@ if (!(uptr->flags & UNIT_ATT)) {                        /* not attached? */
     }
 if ((dptr = find_dev_from_unit (uptr)) == NULL)
     return SCPE_OK;
-if (uptr->flags & UNIT_BUF) {
+if ((uptr->flags & UNIT_BUF) && (uptr->filebuf)) {
     uint32 cap = (uptr->hwmark + dptr->aincr - 1) / dptr->aincr;
     if (uptr->hwmark && ((uptr->flags & UNIT_RO) == 0)) {
         if (!sim_quiet) {
@@ -6237,13 +6247,16 @@ for ( ;; ) {                                            /* device loop */
         break;
     if ((dptr = find_dev (buf)) == NULL) {              /* locate device */
         sim_printf ("Invalid device name: %s\n", buf);
-        return SCPE_INCOMP;
+        r = SCPE_INCOMP;
+        goto Cleanup_Return;
         }
     READ_S (buf);                                       /* [V3.0+] logical name */
     deassign_device (dptr);                             /* delete old name */
     if ((buf[0] != 0) && 
-        ((r = assign_device (dptr, buf)) != SCPE_OK))
-        return r;
+        ((r = assign_device (dptr, buf)) != SCPE_OK)) {
+        r = SCPE_INCOMP;
+        goto Cleanup_Return;
+        }
     READ_I (flg);                                       /* [V2.10+] ctlr flags */
     if (!v32)
         flg = ((flg & DEV_UFMASK_31) << (DEV_V_UF - DEV_V_UF_31)) |
@@ -6257,7 +6270,8 @@ for ( ;; ) {                                            /* device loop */
             break;
         if ((uint32) unitno >= dptr->numunits) {        /* too big? */
             sim_printf ("Invalid unit number: %s%d\n", sim_dname (dptr), unitno);
-            return SCPE_INCOMP;
+            r = SCPE_INCOMP;
+            goto Cleanup_Return;
             }
         READ_I (time);                                  /* event time */
         uptr = (dptr->units) + unitno;
@@ -6291,8 +6305,11 @@ for ( ;; ) {                                            /* device loop */
         if ((uptr->flags & UNIT_ATT) &&                 /* unit currently attached? */
             (!dont_detach_attach)) {
             r = scp_detach_unit (dptr, uptr);           /* detach it */
-            if (r != SCPE_OK)
-                return sim_messagef (r, "Error detaching %s from %s: %s\n", sim_uname (uptr), uptr->filename, sim_error_text (r));
+            if (r != SCPE_OK) {
+                sim_printf ("Error detaching %s from %s: %s\n", sim_uname (uptr), uptr->filename, sim_error_text (r));
+                r = SCPE_INCOMP;
+                goto Cleanup_Return;
+                }
             }
         if ((buf[0] != '\0') &&                         /* unit to be reattached? */
             ((uptr->flags & UNIT_ATTABLE) ||            /*  and unit is attachable */
@@ -6315,7 +6332,8 @@ for ( ;; ) {                                            /* device loop */
             if (((uptr->flags & (UNIT_FIX + UNIT_ATTABLE)) != UNIT_FIX) ||
                  (dptr->deposit == NULL)) {
                 sim_printf ("Can't restore memory: %s%d\n", sim_dname (dptr), unitno);
-                return SCPE_INCOMP;
+                r = SCPE_INCOMP;
+                goto Cleanup_Return;
                 }
             if (high != old_capac) {                    /* size change? */
                 uptr->capac = old_capac;                /* temp restore old */
@@ -6324,7 +6342,8 @@ for ( ;; ) {                                            /* device loop */
                      (dptr->msize (uptr, (int32) high, NULL, NULL) != SCPE_OK))) {
                     sim_printf ("Can't change memory size: %s%d\n",
                                 sim_dname (dptr), unitno);
-                    return SCPE_INCOMP;
+                    r = SCPE_INCOMP;
+                    goto Cleanup_Return;
                     }
                 uptr->capac = high;                     /* new memory size */
                 sim_printf ("Memory size changed: %s%d = ", sim_dname (dptr), unitno);
@@ -6334,19 +6353,23 @@ for ( ;; ) {                                            /* device loop */
                 sim_printf ("\n");
                 }
             sz = SZ_D (dptr);                           /* allocate buffer */
-            if ((mbuf = calloc (SRBSIZ, sz)) == NULL)
-                return SCPE_MEM;
+            if ((mbuf = calloc (SRBSIZ, sz)) == NULL) {
+                r = SCPE_MEM;
+                goto Cleanup_Return;
+                }
             for (k = 0; k < high; ) {                   /* loop thru mem */
                 if (sim_fread (&blkcnt, sizeof (blkcnt), 1, rfile) == 0) {/* block count */
                     free (mbuf);
-                    return SCPE_IOERR;
+                    r = SCPE_IOERR;
+                    goto Cleanup_Return;
                     }
                 if (blkcnt < 0)                         /* compressed? */
                     limit = -blkcnt;
                 else limit = (int32)sim_fread (mbuf, sz, blkcnt, rfile);
                 if (limit <= 0) {                       /* invalid or err? */
                     free (mbuf);
-                    return SCPE_IOERR;
+                    r = SCPE_IOERR;
+                    goto Cleanup_Return;
                     }
                 for (j = 0; j < limit; j++, k = k + (dptr->aincr)) {
                     if (blkcnt < 0)                     /* compressed? */
@@ -6355,7 +6378,7 @@ for ( ;; ) {                                            /* device loop */
                     r = dptr->deposit (val, k, uptr, SIM_SW_REST);
                     if (r != SCPE_OK) {
                         free (mbuf);
-                        return r;
+                        goto Cleanup_Return;
                         }
                     }                                   /* end for j */
                 }                                       /* end for k */
@@ -6377,6 +6400,8 @@ for ( ;; ) {                                            /* device loop */
         if (depth != rptr->depth) {                      /* [V2.10+] mismatch? */
             sim_printf ("Register depth mismatch: %s %s, file = %d, sim = %d\n",
                         sim_dname (dptr), buf, depth, rptr->depth);
+            if (depth > rptr->depth)
+                depth = rptr->depth;
             }
         mask = width_mask[rptr->width];                 /* get mask */
         for (us = 0; us < depth; us++) {                /* loop thru values */
@@ -6428,6 +6453,7 @@ for (j=0, r = SCPE_OK; j<attcnt; j++) {
         }
     free (attnames[j]);
     }
+Cleanup_Return:
 free (attnames);
 free (attunits);
 free (attswitches);
@@ -6457,7 +6483,7 @@ t_stat run_cmd (int32 flag, CONST char *cptr)
 char gbuf[CBUFSIZE] = "";
 CONST char *tptr;
 uint32 i, j;
-int32 sim_next;
+int32 sim_next = 0;
 int32 unitno;
 t_value pcv, orig_pcv;
 t_stat r;
@@ -6549,7 +6575,8 @@ else if (flag == RU_NEXT) {                             /* next */
         if ((r != SCPE_OK) || (sim_next <= 0))          /* error? */
             return SCPE_ARG;
         }
-    else sim_next = 1;
+    else
+        sim_next = 1;
     if (sim_vm_is_subroutine_call(&addrs)) {
         sim_brk_types |= BRK_TYP_DYN_STEPOVER;
         for (i=0; addrs[i]; i++)
@@ -9591,13 +9618,16 @@ do {
         sim_brk_ins = p;
         return bp;
         }
-    else if (loc < bp->addr)                            /* go down? p is upper */
-        hi = p - 1;
-    else lo = p + 1;                                    /* go up? p is lower */
+    else
+        if (loc < bp->addr)                             /* go down? p is upper */
+            hi = p - 1;
+        else
+            lo = p + 1;                                 /* go up? p is lower */
     } while (lo <= hi);
 if (loc < bp->addr)                                     /* insrt before or */
     sim_brk_ins = p;
-else sim_brk_ins = p + 1;                               /* after last sch */
+else
+    sim_brk_ins = p + 1;                                /* after last sch */
 return NULL;
 }
 
@@ -9702,7 +9732,8 @@ return SCPE_OK;
 
 t_stat sim_brk_clr (t_addr loc, int32 sw)
 {
-BRKTAB *bpl, *bp = sim_brk_fnd (loc);
+BRKTAB *bpl = NULL;
+BRKTAB *bp = sim_brk_fnd (loc);
 int32 i;
 
 if (!bp)                                                /* not there? ok */
@@ -9714,9 +9745,9 @@ while (bp) {
     if (bp->typ == (bp->typ & sw)) {
         free (bp->act);                                 /* deallocate action */
         if (bp == sim_brk_tab[sim_brk_ins])
-            bpl = sim_brk_tab[sim_brk_ins] = bp->next;
+            bpl = sim_brk_tab[sim_brk_ins] = bp->next;  /* remove from head of list */
         else
-            bpl->next = bp->next;
+            bpl->next = bp->next;                       /* remove from middle of list */
         free (bp);
         bp = bpl;
         }
@@ -10244,6 +10275,7 @@ ep->switches = switches;                                /* set switches */
 match_buf = (uint8 *)calloc (strlen (match) + 1, 1);
 if ((match_buf == NULL) || (ep->match_pattern == NULL)) {
     sim_exp_clr_tab (exp, ep);                          /* clear it */
+    free (match_buf);
     return SCPE_MEM;
     }
 if (switches & EXP_TYP_REGEX) {
@@ -10267,7 +10299,8 @@ if (ep->act) {                                          /* replace old action? *
     free (ep->act);                                     /* deallocate */
     ep->act = NULL;                                     /* now no action */
     }
-if (act) while (sim_isspace(*act)) ++act;                   /* skip leading spaces in action string */
+if (act)
+    while (sim_isspace(*act)) ++act;                    /* skip leading spaces in action string */
 if ((act != NULL) && (*act != 0)) {                     /* new action? */
     char *newp = (char *) calloc (strlen (act)+1, sizeof (*act)); /* alloc buf */
     if (newp == NULL)                                   /* mem err? */
@@ -10628,7 +10661,7 @@ int32 cond;
 *stat = SCPE_ARG;
 cptr = get_glyph (cptr, gbuf, 0);
 if (0 == memcmp("SCPE_", gbuf, 5))
-    strcpy (gbuf, gbuf+5);   /* skip leading SCPE_ */
+    memmove (gbuf, gbuf+5, 1 + strlen (gbuf+5));/* skip leading SCPE_ */
 for (cond=0; cond < (SCPE_MAX_ERR-SCPE_BASE); cond++)
     if (0 == strcmp(scp_errors[cond].code, gbuf)) {
         cond += SCPE_BASE;
@@ -11564,7 +11597,7 @@ return newp;
 static void displayMagicTopic (FILE *st, DEVICE *dptr, TOPIC *topic)
 {
 char tbuf[CBUFSIZE];
-size_t i, skiplines;
+size_t i, skiplines = 0;
 #ifdef _WIN32
 FILE *tmp;
 char *tmpnam;
@@ -11587,24 +11620,27 @@ if (!tmp) {
     return;
     }
     
-if (topic->title)
+if (topic->title) {
     fprintf (st, "%s\n", topic->title+1);
 
-skiplines = 0;
-if (!strcmp (topic->title+1, "Registers")) {
-    fprint_reg_help (tmp, dptr) ;
-    skiplines = 1;
-    }
-else
-    if (!strcmp (topic->title+1, "Set commands")) {
-        fprint_set_help (tmp, dptr);
-        skiplines = 3;
-        }
-    else
-        if (!strcmp (topic->title+1, "Show commands")) {
-            fprint_show_help (tmp, dptr);
-            skiplines = 3;
+    skiplines = 0;
+    if (dptr) {
+        if (!strcmp (topic->title+1, "Registers")) {
+            fprint_reg_help (tmp, dptr) ;
+            skiplines = 1;
             }
+        else
+            if (!strcmp (topic->title+1, "Set commands")) {
+                fprint_set_help (tmp, dptr);
+                skiplines = 3;
+                }
+            else
+                if (!strcmp (topic->title+1, "Show commands")) {
+                    fprint_show_help (tmp, dptr);
+                    skiplines = 3;
+                    }
+        }
+    }
 rewind (tmp);
 
 /* Discard leading blank lines/redundant titles */
@@ -11970,7 +12006,8 @@ if (fp == NULL) {
          * of the executable.  Failing that, try the 'help' subdirectory
          * of the executable.  Failing that, we're out of luck.
          */
-        strncpy (fbuf, sim_argv[0], sizeof (fbuf));
+        fbuf[sizeof(fbuf)-1] = '\0';
+        strncpy (fbuf, sim_argv[0], sizeof (fbuf)-1);
         if ((p = (char *)match_ext (fbuf, "EXE")))
             *p = '\0';
         if ((p = strrchr (fbuf, '\\'))) {
