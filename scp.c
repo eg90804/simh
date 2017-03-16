@@ -6622,7 +6622,7 @@ else if (flag == RU_BOOT) {                             /* boot */
 
 else
 #ifdef OPCON
-    if ((flag != RU_CONT) && !oc_check_halt ()) /* must be cont */
+    if ((flag != RU_CONT) && !oc_check_halt ())        /* must be cont */
 #else
     if (flag != RU_CONT)                               /* must be cont */
 #endif

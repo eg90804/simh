@@ -2188,10 +2188,12 @@ return SCPE_OK;
 
 void sim_start_timer_services (void)
 {
+sim_debug (DBG_TRC, &sim_timer_dev, "sim_start_timer_services()\n");
+
 #ifdef OPCON
 if (oc_active) ocp->sir = 1;
 #endif
-sim_debug (DBG_TRC, &sim_timer_dev, "sim_start_timer_services()\n");
+
 _rtcn_configure_calibrated_clock (sim_calb_tmr);
 #if defined(SIM_ASYNCH_CLOCKS)
 pthread_mutex_lock (&sim_timer_lock);
@@ -2285,6 +2287,7 @@ if (sim_timer_thread_running) {
 else
     pthread_mutex_unlock (&sim_timer_lock);
 #endif
+
 #ifdef OPCON
 if (oc_active) ocp->sir = 0;
 #endif
