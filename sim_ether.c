@@ -711,7 +711,7 @@ char* eth_getname_byname(const char* name, char* temp, char *desc)
   n = strlen(name);
   for (i=0; i<count && !found; i++) {
     if ((n == strlen(list[i].name)) &&
-        (sim_strncasecmp(name, list[i].name, n) == 0)) {
+        (strncasecmp(name, list[i].name, n) == 0)) {
       found = 1;
       strcpy(temp, list[i].name); /* only case might be different */
       strcpy(desc, list[i].desc);
@@ -731,7 +731,7 @@ char* eth_getdesc_byname(char* name, char* temp)
   n = strlen(name);
   for (i=0; i<count && !found; i++) {
     if ((n == strlen(list[i].name)) &&
-        (sim_strncasecmp(name, list[i].name, n) == 0)) {
+        (strncasecmp(name, list[i].name, n) == 0)) {
       found = 1;
       strcpy(temp, list[i].desc);
     }
@@ -1138,8 +1138,8 @@ int load_pcap(void) {
         BOOL(WINAPI *p_SetDllDirectory)(LPCTSTR);
         UINT(WINAPI *p_GetSystemDirectory)(LPTSTR lpBuffer, UINT uSize);
 
-        p_SetDllDirectory = (BOOL(WINAPI *)(LPCTSTR)) GetProcAddress(GetModuleHandle("kernel32.dll"), "SetDllDirectoryA");
-        p_GetSystemDirectory = (UINT(WINAPI *)(LPTSTR, UINT)) GetProcAddress(GetModuleHandle("kernel32.dll"), "GetSystemDirectoryA");
+        p_SetDllDirectory = (BOOL(WINAPI *)(LPCTSTR)) GetProcAddress(GetModuleHandleA("kernel32.dll"), "SetDllDirectoryA");
+        p_GetSystemDirectory = (UINT(WINAPI *)(LPTSTR, UINT)) GetProcAddress(GetModuleHandleA("kernel32.dll"), "GetSystemDirectoryA");
         if (p_SetDllDirectory && p_GetSystemDirectory) {
           char npcap_path[512] = "";
 
