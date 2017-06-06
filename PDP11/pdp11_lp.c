@@ -124,6 +124,10 @@ DEVICE lpt_dev = {
    lpt_detach   process detach
 */
 
+#ifdef LPT_WITH_DEV
+SERHANDLE lpt_handle = INVALID_PORT;
+#endif
+
 t_stat lpt_rd (int32 *data, int32 PA, int32 access)
 {
 if ((PA & 02) == 0)                                     /* csr */
@@ -189,6 +193,17 @@ t_stat lpt_attach (UNIT *uptr, CONST char *cptr)
 t_stat reason;
 
 lpt_csr = lpt_csr & ~CSR_ERR;
+
+#ifdef LPT_WITH_DEV
+if ((strncmp(cptr, "/dev/tty", 8) == 0 || 
+     strncmp(cptr, "com", 3) == 0 ||
+     strncmp(cptr, "ser", 3) == 0) &&
+    (lpt_handle =  sim_open_serial(cptr, NULL, &reason) != INVALID_HANDLE)) {
+  lpt_uses_device = 1;
+  lpt_unit.flags &= UNIT_ATT
+  }
+else {
+#endif
 reason = attach_unit (uptr, cptr);
 if ((lpt_unit.flags & UNIT_ATT) == 0)
     lpt_csr = lpt_csr | CSR_ERR;
@@ -198,12 +213,22 @@ return reason;
 t_stat lpt_detach (UNIT *uptr)
 {
 lpt_csr = lpt_csr | CSR_ERR;
+#ifdef LPT_WITH_DEV
+if (lpt_handle != INVALID_HANDLE)
+  sim_close_serial(lpt_handle);
+#endif
+
 return detach_unit (uptr);
 }
 
 t_stat lpt_help (FILE *st, DEVICE *dptr, UNIT *uptr, int32 flag, const char *cptr)
 {
 fprintf (st, "Line Printer (LPT)\n\n");
+#ifdef LPT_WITH_DEV
+if (lpt_uses_device)
+    fprintf (st, "The line printer (LPT) writes data to the specified serial line. The POS register specifies\n");
+else
+#endif
 fprintf (st, "The line printer (LPT) writes data to a disk file.  The POS register specifies\n");
 fprintf (st, "the number of the next data item to be written.  Thus, by changing POS, the\n");
 fprintf (st, "user can backspace or advance the printer.\n");

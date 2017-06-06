@@ -483,9 +483,14 @@ typedef struct {
 
 /* IO parameters */
 
+#ifdef OPCON
+#define DZ_MUXES        2                               /* max # of DZ muxes */
+#define VH_MUXES        2                               /* max # of VH muxes */
+#else
 #define DZ_MUXES        4                               /* max # of DZ muxes */
-#define DZ_LINES        8                               /* lines per DZ mux */
 #define VH_MUXES        4                               /* max # of VH muxes */
+#endif
+#define DZ_LINES        8                               /* lines per DZ mux */
 #define DLX_LINES       16                              /* max # of KL11/DL11's */
 #define DCX_LINES       16                              /* max # of DC11's */
 #define DUP_LINES       8                               /* max # of DUP11/DPV11's */
