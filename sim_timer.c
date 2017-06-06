@@ -1605,6 +1605,8 @@ else {
                 sim_throt_val = (uint32) (val * (1 + (sim_idle_rate_ms / val2)));
                 }
             }
+        sim_throt_state = SIM_THROT_STATE_THROTTLE;         /* force state */
+        sim_throt_wait = sim_throt_val;
         }
     }
 sim_register_internal_device (&sim_throttle_dev);       /* Register Throttle Device */
@@ -1638,7 +1640,8 @@ else {
         break;
 
     case SIM_THROT_SPC:
-        fprintf (st, "Throttle:                      sleep %d ms every %d cycles\n", sim_throt_sleep_time, sim_throt_val);
+        fprintf (st, "Throttle:                      %d/%d\n", sim_throt_val, sim_throt_sleep_time);
+        fprintf (st, "Throttling by sleeping for:    %d ms every %d cycles\n", sim_throt_sleep_time, sim_throt_val);
         break;
 
     default:
@@ -2229,8 +2232,8 @@ for (tmr=0; tmr<=SIM_NTIMERS; tmr++) {
         if (clock_time < 0)
             clock_time = 0;
         /* Stop clock assist unit and make sure the clock unit has a tick queued */
-        sim_cancel (&sim_timer_units[tmr]);
-        if (rtc_hz[tmr]) {
+        if (sim_is_active (&sim_timer_units[tmr])) {
+            sim_cancel (&sim_timer_units[tmr]);
             sim_debug (DBG_QUE, &sim_timer_dev, "sim_stop_timer_services() - tmr=%d scheduling %s after %d\n", tmr, sim_uname (sim_clock_unit[tmr]), clock_time);
             _sim_activate (sim_clock_unit[tmr], clock_time);
             }

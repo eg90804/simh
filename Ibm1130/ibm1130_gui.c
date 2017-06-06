@@ -33,6 +33,7 @@
 
 #include "ibm1130_defs.h"
 #include "ibm1130res.h"
+#include "sim_tmxr.h"
 
 #define UPDATE_BY_TIMER
 
@@ -96,6 +97,10 @@ DEVICE console_dev = {
 extern UNIT cr_unit;                                    /* pointers to 1442 and 1132 (1403) printers */
 extern UNIT prt_unit;
 
+extern UNIT dsk_unit[];
+extern int boot_drive;
+extern t_bool program_is_loaded;
+
 #ifndef GUI_SUPPORT
     void update_gui (int force)               {}        /* stubs for non-GUI builds */
     void forms_check (int set)                {}
@@ -109,18 +114,23 @@ extern UNIT prt_unit;
     static void destroy_console_window (void) {}
 
     t_stat console_reset (DEVICE *dptr)                         {return SCPE_OK;}
-    void   stuff_cmd (char *cmd)                                {}
+    long   stuff_cmd (char *cmd)                                {return 0;}
     t_bool stuff_and_wait (char *cmd, int timeout, int delay)   {return FALSE;}
     char  *read_cmdline (char *ptr, int size, FILE *stream)     {return read_line(ptr, size, stream);}
     void   remark_cmd (char *remark)                            {sim_printf("%s\n", remark);}
 #else
+
+static HWND hConsoleWindow = NULL;
 
 t_stat console_reset (DEVICE *dptr)
 {
     if (! sim_gui) {
         SETBIT(console_unit.flags, UNIT_DIS);           /* disable the GUI */
         CLRBIT(console_unit.flags, UNIT_DISPLAY);       /* turn the GUI off */
-    }
+    } else {
+        if (!hConsoleWindow)
+            hConsoleWindow = GetConsoleWindow();
+        }
 
     update_gui(FALSE);
     return SCPE_OK;
@@ -142,14 +152,14 @@ void scp_panic (const char *msg)
 #define BUTTON_WIDTH  90
 #define BUTTON_HEIGHT 50
 
-#define IDC_KEYBOARD_SELECT     0
+#define IDC_UNUSED              0
 #define IDC_DISK_UNLOCK         1
 #define IDC_RUN                 2
-#define IDC_PARITY_CHECK        3
-#define IDC_UNUSED              4
+#define IDC_KEYBOARD_SELECT     3
+#define IDC_POWER_ON            4
 #define IDC_FILE_READY          5
-#define IDC_FORMS_CHECK         6
-#define IDC_POWER_ON            7
+#define IDC_PARITY_CHECK        6
+#define IDC_FORMS_CHECK         7
 #define IDC_POWER               8
 #define IDC_PROGRAM_START       9
 #define IDC_PROGRAM_STOP        10
@@ -216,15 +226,15 @@ static struct tag_btn {
     BOOL   subclassed;
 
 } btn[] = {
-    0, 0, BUTTON_WIDTH, BUTTON_HEIGHT,  "KEYBOARD\nSELECT",     FALSE,  FALSE,  RGB(255,255,180),   NULL, NULL, NULL,   TRUE,
+    0, 0, BUTTON_WIDTH, BUTTON_HEIGHT,  "",                     FALSE,  FALSE,  RGB(255,255,180),   NULL, NULL, NULL,   TRUE,
     0, 1, BUTTON_WIDTH, BUTTON_HEIGHT,  "DISK\nUNLOCK",         FALSE,  TRUE,   RGB(255,255,180),   NULL, NULL, NULL,   TRUE,
     0, 2, BUTTON_WIDTH, BUTTON_HEIGHT,  "RUN",                  FALSE,  FALSE,  RGB(0,255,0),       NULL, NULL, NULL,   TRUE,
-    0, 3, BUTTON_WIDTH, BUTTON_HEIGHT,  "PARITY\nCHECK",        FALSE,  FALSE,  RGB(255,0,0),       NULL, NULL, NULL,   TRUE,
+    0, 3, BUTTON_WIDTH, BUTTON_HEIGHT,  "K B\nSELECT",          FALSE,  FALSE,  RGB(255,255,180),   NULL, NULL, NULL,   TRUE,
 
-    1, 0, BUTTON_WIDTH, BUTTON_HEIGHT,  "",                     FALSE,  FALSE,  RGB(255,255,180),   NULL, NULL, NULL,   TRUE,
+    1, 0, BUTTON_WIDTH, BUTTON_HEIGHT,  "POWER\nON",            FALSE,  TRUE,   RGB(255,255,180),   NULL, NULL, NULL,   TRUE,
     1, 1, BUTTON_WIDTH, BUTTON_HEIGHT,  "FILE\nREADY",          FALSE,  FALSE,  RGB(0,255,0),       NULL, NULL, NULL,   TRUE,
-    1, 2, BUTTON_WIDTH, BUTTON_HEIGHT,  "FORMS\nCHECK",         FALSE,  FALSE,  RGB(255,255,0),     NULL, NULL, NULL,   TRUE,
-    1, 3, BUTTON_WIDTH, BUTTON_HEIGHT,  "POWER\nON",            FALSE,  TRUE,   RGB(255,255,180),   NULL, NULL, NULL,   TRUE,
+    1, 2, BUTTON_WIDTH, BUTTON_HEIGHT,  "PARITY\nCHECK",        FALSE,  FALSE,  RGB(255,0,0),       NULL, NULL, NULL,   TRUE,
+    1, 3, BUTTON_WIDTH, BUTTON_HEIGHT,  "FORMS\nCHECK",         FALSE,  FALSE,  RGB(255,255,0),     NULL, NULL, NULL,   TRUE,
 
     2, 0, BUTTON_WIDTH, BUTTON_HEIGHT,  "POWER",                TRUE,   FALSE,  RGB(255,255,180),   NULL, NULL, NULL,   TRUE,
     2, 1, BUTTON_WIDTH, BUTTON_HEIGHT,  "PROGRAM\nSTART",       TRUE,   FALSE,  RGB(0,255,0),       NULL, NULL, NULL,   TRUE,
@@ -233,9 +243,9 @@ static struct tag_btn {
 
     3, 0, BUTTON_WIDTH, BUTTON_HEIGHT,  "KEYBOARD",             TRUE,   FALSE,  RGB(255,255,180),   NULL, NULL, NULL,   TRUE,
     3, 1, BUTTON_WIDTH, BUTTON_HEIGHT,  "IMM\nSTOP",            TRUE,   FALSE,  RGB(255,0,0),       NULL, NULL, NULL,   TRUE,
-    3, 2, BUTTON_WIDTH, BUTTON_HEIGHT,  "CHECK\nRESET",         TRUE,   FALSE,  RGB(0,0,255),       NULL, NULL, NULL,   TRUE,
+    3, 2, BUTTON_WIDTH, BUTTON_HEIGHT,  "RESET",                TRUE,   FALSE,  RGB(0,0,255),       NULL, NULL, NULL,   TRUE,
     3, 3, BUTTON_WIDTH, BUTTON_HEIGHT,  "PROGRAM\nLOAD",        TRUE,   FALSE,  RGB(0,0,255),       NULL, NULL, NULL,   TRUE,
-                            
+
     TXTBOX_X+40, TXTBOX_Y+25, 35, 12,   "Tear",                 TRUE,   FALSE,  0,                  NULL, NULL, NULL,   FALSE,
     635, 238, 110, 110,                 "EMPTY_1442",           TRUE,   FALSE,  0,                  NULL, NULL, NULL,   FALSE,
     635, 366, 110, 110,                 "EMPTY_1132",           TRUE,   FALSE,  0,                  NULL, NULL, NULL,   FALSE,
@@ -260,11 +270,11 @@ static struct tag_txtbox {
 } txtbox[] = {
     TXTBOX_X, TXTBOX_Y,     "Card Reader",  "CR",       -1,
     TXTBOX_X, TXTBOX_Y+ 25, "Printer",      "PRT",      IDC_1132,
-    TXTBOX_X, TXTBOX_Y+ 50, "Disk 1",       "DSK0",     -1,
-    TXTBOX_X, TXTBOX_Y+ 75, "Disk 2",       "DSK1",     -1,
-    TXTBOX_X, TXTBOX_Y+100, "Disk 3",       "DSK2",     -1,
-    TXTBOX_X, TXTBOX_Y+125, "Disk 4",       "DSK3",     -1,
-    TXTBOX_X, TXTBOX_Y+150, "Disk 5",       "DSK4",     -1,
+    TXTBOX_X, TXTBOX_Y+ 50, "Disk 0",       "DSK0",     -1,
+    TXTBOX_X, TXTBOX_Y+ 75, "Disk 1",       "DSK1",     -1,
+    TXTBOX_X, TXTBOX_Y+100, "Disk 2",       "DSK2",     -1,
+    TXTBOX_X, TXTBOX_Y+125, "Disk 3",       "DSK3",     -1,
+    TXTBOX_X, TXTBOX_Y+150, "Disk 4",       "DSK4",     -1,
 };
 #define NTXTBOXES (sizeof(txtbox) / sizeof(txtbox[0]))
 
@@ -428,6 +438,20 @@ void update_gui (BOOL force)
     if (V)
         CND |= 1;
 
+    if ((boot_drive<0) || (!program_is_loaded)) {
+        boot_drive = CES & 7;
+        if (boot_drive > 4)
+            boot_drive = -1;
+    }
+    if ((boot_drive>=0) && (dsk_unit[boot_drive].flags&UNIT_ATT)) {
+        disk_ready(TRUE);
+        disk_unlocked(FALSE);
+    }
+    else {
+        disk_ready(FALSE);
+        disk_unlocked(TRUE);
+    }
+
     int_lamps |= int_req;
     if (ipl >= 0)
         int_lamps |= (0x20 >> ipl);
@@ -560,7 +584,7 @@ LRESULT CALLBACK ButtonProc (HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 {
     int i;
 
-    i = GetWindowLong(hWnd, GWL_ID);
+    i = GetWindowLongPtr(hWnd, GWLP_ID);
 
     if (! btn[i].pushable) {
         if (uMsg == WM_LBUTTONDOWN || uMsg == WM_LBUTTONUP || uMsg == WM_LBUTTONDBLCLK)
@@ -694,7 +718,7 @@ void PaintButton (LPDRAWITEMSTRUCT dis)
 /* ------------------------------------------------------------------------ 
  * ------------------------------------------------------------------------ */
 
-HWND CreateSubclassedButton (HWND hwParent, int i)
+HWND CreateSubclassedButton (HWND hwParent, UINT_PTR i)
 {
     HWND hBtn;
     int x, y;
@@ -710,7 +734,7 @@ HWND CreateSubclassedButton (HWND hwParent, int i)
     btn[i].hBtn = hBtn;
 
     if (oldButtonProc == NULL)
-        oldButtonProc = (WNDPROC) GetWindowLong(hBtn, GWL_WNDPROC);
+        oldButtonProc = (WNDPROC) GetWindowLongPtr(hBtn, GWLP_WNDPROC);
 
     btn[i].hbrLit = CreateSolidBrush(btn[i].clr);
 
@@ -723,7 +747,7 @@ HWND CreateSubclassedButton (HWND hwParent, int i)
         EnableWindow(hBtn, FALSE);
     }
 
-    SetWindowLong(hBtn, GWL_WNDPROC, (LONG) ButtonProc);
+    SetWindowLongPtr(hBtn, GWLP_WNDPROC, (UINT_PTR) ButtonProc);
     return hBtn;
 }
 
@@ -736,7 +760,8 @@ HWND CreateSubclassedButton (HWND hwParent, int i)
 static DWORD WINAPI Pump (LPVOID arg)
 {
     MSG msg;
-    int wx, wy, i;
+    int wx, wy;
+    UINT_PTR i;
     RECT r, ra;
     BITMAP bm;
     WNDCLASS cd;
@@ -1150,7 +1175,6 @@ void HandleCommand (HWND hWnd, WORD wNotify, WORD idCtl, HWND hwCtl)
     switch (idCtl) {
         case IDC_POWER:                     /* toggle system power */
             power = ! power;
-            reset_all(0);
             if (running && ! power) {       /* turning off */
                 reason = STOP_POWER_OFF;
                 /* wait for execution thread to exit */
@@ -1160,6 +1184,7 @@ void HandleCommand (HWND hWnd, WORD wNotify, WORD idCtl, HWND hwCtl)
  *                  Sleep(10);
  */             
             }
+            stuff_and_wait("reset", 0, 500);
 
             btn[IDC_POWER_ON].state = power;
             EnableWindow(btn[IDC_POWER_ON].hBtn, power);
@@ -1167,7 +1192,12 @@ void HandleCommand (HWND hWnd, WORD wNotify, WORD idCtl, HWND hwCtl)
             for (i = 0; i < NBUTTONS; i++)  /* repaint all of the lamps */
                 if (! btn[i].pushable)
                     InvalidateRect(btn[i].hBtn, NULL, TRUE);
-
+            if ((cr_unit.flags & UNIT_ATT) && 
+                (btn[IDC_1442].state!=STATE_1442_FULL)) {
+                stuff_and_wait("detach cr", 0, 500);
+                update_gui(TRUE);
+            }
+            program_is_loaded = FALSE;
             break;
 
         case IDC_PROGRAM_START:             /* begin execution */
@@ -1228,17 +1258,37 @@ void HandleCommand (HWND hWnd, WORD wNotify, WORD idCtl, HWND hwCtl)
 
         case IDC_RESET:
             if (! running) {                /* check-reset is disabled while running */
-                reset_all(0);
+                stuff_and_wait("reset", 0, 500);
                 forms_check(0);             /* clear forms-check status */
                 print_check(0);
             }
+            if ((cr_unit.flags & UNIT_ATT) && 
+                (btn[IDC_1442].state!=STATE_1442_FULL)) {
+                stuff_and_wait("detach cr", 0, 500);
+                update_gui(TRUE);
+            }
+            program_is_loaded = FALSE;
             break;
 
         case IDC_PROGRAM_LOAD:
             if (! running) {                /* if card reader is attached to a file, do cold start read of one card */
                 IAR = 0;                    /* reset IAR */
 #ifdef PROGRAM_LOAD_STARTS_CPU
-                stuff_cmd("boot cr");
+                if (cr_unit.flags & UNIT_ATT)
+                    stuff_cmd("boot cr");
+                else {
+                    if (((CES & 7) <= 4) &&
+                        (dsk_unit[(CES & 7)].flags&UNIT_ATT))
+                        boot_drive = CES & 7;
+                    else
+                        boot_drive = -1;
+                    if (boot_drive >= 0) {
+                        char cmd[50];
+
+                        sprintf(cmd, "boot dsk%d", boot_drive);
+                        stuff_cmd(cmd);
+                    }
+                }
 #else
                 if (cr_boot(0, NULL) != SCPE_OK)    /* load boot card */
                     remark_cmd("IPL failed");
@@ -1253,15 +1303,19 @@ void HandleCommand (HWND hWnd, WORD wNotify, WORD idCtl, HWND hwCtl)
             break;
 
         case IDC_1442:
-            if (btn[IDC_1442].state == STATE_1442_FULL || wNotify == STN_DBLCLK)
-                stuff_cmd("detach cr");
-            else if (btn[IDC_1442].state != STATE_1442_EMPTY && wNotify == STN_CLICKED) {
+            if (btn[IDC_1442].state == STATE_1442_FULL || wNotify == STN_DBLCLK) {
+                if (running)
+                    MessageBeep(0);
+                else
+                    stuff_cmd("detach cr");
+            } else if (btn[IDC_1442].state != STATE_1442_EMPTY && wNotify == STN_CLICKED) {
                 cr_rewind();
                 update_gui(TRUE);
             }
             break;
     }
     
+    SetForegroundWindow(hConsoleWindow);
     update_gui(FALSE);
 }
 
@@ -1329,7 +1383,7 @@ LRESULT CALLBACK ConsoleWndProc (HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lPa
             break;
 
         case WM_CTLCOLORBTN:
-            i = GetWindowLong((HWND) lParam, GWL_ID);
+            i = GetWindowLongPtr((HWND) lParam, GWLP_ID);
             if (BETWEEN(i, 0, NBUTTONS-1))
                 return (LRESULT) (power && IsWindowEnabled((HWND) lParam) ? btn[i].hbrLit : btn[i].hbrDark);
 
@@ -1398,8 +1452,14 @@ void print_check (int set)
 
 void keyboard_selected (int select)
 {
-    btn[IDC_KEYBOARD_SELECT].state = select;
+    extern TMLN sim_con_ldsc;
+    extern TMXR sim_con_tmxr;
 
+    btn[IDC_KEYBOARD_SELECT].state = select;
+    if (select &&                                           /* selected */
+        (sim_con_tmxr.master != 0) &&                       /* not Telnet? */
+        (sim_con_ldsc.serport != 0))                       /* and not serial? */
+        SetForegroundWindow(hConsoleWindow);
     if (btn[IDC_KEYBOARD_SELECT].hBtn != NULL)
         EnableWindow(btn[IDC_KEYBOARD_SELECT].hBtn, select);
 }
@@ -1420,14 +1480,67 @@ void disk_unlocked (int unlocked)
         EnableWindow(btn[IDC_DISK_UNLOCK].hBtn, unlocked);
 }
 
+static BOOL is_scp_file(const char *filename)
+{
+    char cbuf[4*CBUFSIZE], gbuf[CBUFSIZE];
+    char *argv[1] = {NULL};
+    FILE *f = fopen(filename, "r");
+    int lines = 0, comment_lines = 0;
+    BOOL result = TRUE;
+    size_t i;
+
+    if (!f)
+        return FALSE;
+    while (result) {
+        CONST char *cptr;
+
+        cptr = fgets(cbuf, sizeof(cbuf), f);
+        if (cptr == NULL)
+            break;
+        if (strlen(cptr) == sizeof(cbuf)-1)             /* VERY long lines are not SCP commands */
+            result = FALSE;
+        if (!strchr(cptr, '\n'))                        /* lines without newlines are not SCP commands */
+            result = FALSE;
+        if (!memcmp(cptr,"!// ", 4))                    /* indirect deck file literals are not SCP commands */
+            result = FALSE;
+        cptr = sim_trim_endspc(cbuf);
+        while (sim_isspace (*cptr))                     /* trim leading space */
+            cptr++;
+        ++lines;
+        for (i = 0; i < strlen(cptr); i++)
+            if ((cptr[i] & 0x80) || 
+                ((!isprint(cptr[i])) && (!isspace(cptr[i])))) 
+                result = FALSE;                         /* SCP files only have printable ASCII */
+        if ((*cptr == ';') || (*cptr == '#')) {         /* ignore comments */
+            ++comment_lines;
+            continue;
+        }
+        if (*cptr == 0)                                 /* ignore blank */
+            continue;
+        sim_sub_args (cbuf, sizeof(cbuf), argv);
+        cptr = get_glyph_cmd (cptr, gbuf);              /* get command glyph */
+        if (!find_cmd (gbuf)) {                         /* lookup command */
+            result = FALSE;
+            break;
+        }
+    }
+    fclose(f);
+    if (lines == 0)                                     /* Empty file isn't SCP */
+        result = FALSE;
+    return result;
+}
+
 static void accept_dropped_file (HANDLE hDrop)
 {
     int nfiles;
     char fname[MAX_PATH], cmd[MAX_PATH+50], *deckfile;
     BOOL cardreader;
+    BOOL scp_file;
     POINT pt;
     HWND hWndDrop;
+    char msg[512];
 
+    msg[sizeof(msg)-1] = '\0';
     nfiles = DragQueryFile(hDrop, 0xFFFFFFFF, NULL, 0);     /* get file count, */
     DragQueryFile(hDrop, 0, fname, sizeof(fname));          /* get first filename */
     DragQueryPoint(hDrop, &pt);                             /* get location of drop */
@@ -1455,6 +1568,22 @@ static void accept_dropped_file (HANDLE hDrop)
         return;
     }
 
+    scp_file = is_scp_file(fname);
+    if (cardreader) {
+        if (scp_file) {
+            snprintf(msg, sizeof(msg)-1, "\"%s\"\r\n\r\nContains SCP commands (not card reader input).\r\n\r\nProcess as SCP commands?", fname); 
+            if (IDYES != MessageBox(hConsoleWnd, msg, "", MB_YESNO))
+                return;
+            cardreader = FALSE;                 /* Process as SCP commands */
+        }
+    } else {
+        if (!scp_file) {
+            snprintf(msg, sizeof(msg)-1, "Invalid SCP command file:\r\n\r\n\"%s\"\r\n\r\nProcess as Card Reader Input?", fname);
+            if (IDYES != MessageBox(hConsoleWnd, msg, "", MB_YESNO))
+                return;
+            cardreader = TRUE;                  /* Process as Card Input */
+        }
+    }
                                                 /* if shift key is down, prepend @ to name (make it a deck file) */
     deckfile = ((GetKeyState(VK_SHIFT) & 0x8000) && cardreader) ? "@" : "";
 
@@ -1469,13 +1598,18 @@ static void tear_printer (void)
     if ((prt_unit.flags & UNIT_ATT) == 0)
         return;
 
+    if (running) {                                      /* can only accept a drop while processor is stopped */
+        MessageBeep(0);
+        return;
+    }
+
     strcpy(filename, prt_unit.filename);                /* save current attached filename */
 
     if (! stuff_and_wait("detach prt", 1000, 0))        /* detach it */
         return;
 
     sprintf(cmd, "view \"%s\"", filename);              /* spawn notepad to view it */
-    if (! stuff_and_wait(cmd, 3000, 500))
+    if (! stuff_and_wait(cmd, 3000, 2000))
         return;
 
     remove(filename);                                   /* delete the file */
@@ -1522,8 +1656,12 @@ static DWORD  iCmdThreadID   = 0;
 static HANDLE hCmdReadEvent  = NULL;
 static HANDLE hCmdReadyEvent = NULL;
 static BOOL   scp_reading = FALSE;
+static long   scp_command = 0;
 static char   cmdbuffer[256];
 static BOOL   read_exiting = FALSE;
+
+#define SCP_COMMAND InterlockedExchangeAdd(&scp_command, 0L)
+#define NEXT_SCP_COMMAND InterlockedIncrement(&scp_command)
 
 /* CmdThread - separate thread to read commands from stdin upon request */
 
@@ -1537,14 +1675,17 @@ static DWORD WINAPI CmdThread (LPVOID arg)
             continue;                                           /* put breakpoint here to debug */
         if (read_exiting)
             break;
-        scp_reading = TRUE;
+        scp_reading = FALSE;
         if (ReadFile(hStdIn, cmdbuffer, sizeof(cmdbuffer)-1, &dwBytesRead, NULL)) {
             cmdbuffer[dwBytesRead] = '\0';
             scp_reading = FALSE;
+            NEXT_SCP_COMMAND;
             SetEvent(hCmdReadyEvent);                           /* notify main thread a line is ready */
         } else {
             DWORD dwError = GetLastError();
+
             scp_reading = FALSE;
+            NEXT_SCP_COMMAND;
         }
     }
     return 0;
@@ -1584,8 +1725,10 @@ char *read_cmdline (char *ptr, int size, FILE *stream)
         if ((hCmdThread = CreateThread(NULL, 0, CmdThread, NULL, 0, &iCmdThreadID)) == NULL)
             scp_panic("Unable to create command line reading thread");
         atexit(read_atexit);
+        Sleep(500);                                         /* Let GUI threads startup and start to process messages */
     }
 
+    update_gui(TRUE);
     SetEvent(hCmdReadEvent);                                /* let read thread get one line */
     WaitForSingleObject(hCmdReadyEvent, INFINITE);          /* wait for read thread or GUI to respond */
     strncpy(ptr, cmdbuffer, MIN(size, sizeof(cmdbuffer)));  /* copy line to caller's buffer */
@@ -1598,10 +1741,12 @@ char *read_cmdline (char *ptr, int size, FILE *stream)
 
 /* stuff_cmd - force a command into the read_cmdline output buffer. Called asynchronously by GUI */
 
-void stuff_cmd (char *cmd)
+long stuff_cmd (char *cmd)
 {
     INPUT_RECORD *ip;
     size_t i, j, cmdsize = strlen(cmd);
+    DWORD dwEventsWritten;
+    long scp_cmd = SCP_COMMAND;
 
     ip = (INPUT_RECORD *)calloc(2+2*cmdsize, sizeof(*ip));
     for (i=j=0; i<cmdsize; i++, j++) {
@@ -1620,8 +1765,9 @@ void stuff_cmd (char *cmd)
     j++;
     ip[j] = ip[j-1];
     ip[j].Event.KeyEvent.bKeyDown = FALSE;
-    WriteConsoleInput(GetStdHandle(STD_INPUT_HANDLE), ip, 2+j, &i);
+    WriteConsoleInput(GetStdHandle(STD_INPUT_HANDLE), ip, 2+j, &dwEventsWritten);
     free(ip);
+    return scp_cmd;
 }
 
 /* my_yield - process GUI messages. It's not apparent why stuff_and_wait would block,
@@ -1646,14 +1792,14 @@ static void my_yield (void)
 
 t_bool stuff_and_wait (char *cmd, int timeout, int delay)
 {
-    stuff_cmd(cmd);
+    long scp_cmd = stuff_cmd(cmd);
 
-    while (! scp_reading) {
+    while (scp_cmd == SCP_COMMAND) {
         if (timeout < 0)
             return FALSE;
 
         my_yield();
-        if (scp_reading)
+        if (scp_cmd != SCP_COMMAND)
             break;
 
         Sleep(50);
