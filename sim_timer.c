@@ -1787,7 +1787,7 @@ switch (sim_throt_state) {
                 }
             else {                                      /* record instruction rate */
                 sim_throt_cps = (int32)a_cps;
-                sim_debug (DBG_THR, &sim_timer_dev, "sim_throt_svc() Recalibrating Special %d/%d Cycles Per Second of %d\n", 
+                sim_debug (DBG_THR, &sim_timer_dev, "sim_throt_svc() Recalibrating Special %d/%u Cycles Per Second of %f\n", 
                                                     sim_throt_wait, sim_throt_sleep_time, sim_throt_cps);
                 }
             sim_throt_ms_start = sim_os_msec ();
@@ -2388,7 +2388,7 @@ if ((sim_calb_tmr != -1) && (rtc_hz[sim_calb_tmr])) {       /* Calibrated Timer 
     uint32 usecs_til_calib = (uint32)ceil(inst_til_calib / inst_per_usec);
 
     if (uptr != &sim_timer_units[sim_calb_tmr]) {           /* Not scheduling calibrated timer? */
-        if (inst_delay_d >= (double)inst_til_calib) {       /* long wait? */
+        if (inst_delay_d > (double)inst_til_calib) {        /* long wait? */
             stat = sim_clock_coschedule_tmr (uptr, sim_calb_tmr, ticks_til_calib - 1);
             uptr->usecs_remaining = (stat == SCPE_OK) ? usec_delay - usecs_til_calib : 0.0;
             sim_debug (DBG_TIM, &sim_timer_dev, "sim_timer_activate_after(%s, %.0f usecs) - coscheduling with with calibrated timer(%d), ticks=%d, usecs_remaining=%.0f usecs, inst_til_tick=%d\n", 

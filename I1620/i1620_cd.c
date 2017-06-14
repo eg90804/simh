@@ -367,7 +367,7 @@ if ((i = strlen (cdr_buf)) > 0) {                       /* anything at all? */
         }
     else {                                              /* line too long */
         ind[IN_RDCHK] = 1;
-        sim_printf ("CDR line too long");
+        sim_perror ("CDR line too long");
         return SCPE_IOERR;
         }
     }
@@ -534,7 +534,7 @@ fputs (cdp_buf, cdp_unit.fileref);                      /* write card */
 cdp_unit.pos = ftell (cdp_unit.fileref);                /* count char */
 if (ferror (cdp_unit.fileref)) {                        /* error? */
     ind[IN_WRCHK] = 1;
-    sim_perror ("CDR I/O error");
+    sim_perror ("CDP I/O error");
     clearerr (cdp_unit.fileref);
     return SCPE_IOERR;
     }
