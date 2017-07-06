@@ -90,30 +90,34 @@ t_stat tty_set_12digit (UNIT *uptr, int32 val, CONST char *cptr, void *desc);
 */
 
 UNIT tty_unit[] = {
-    { UDATA (&tto_svc, 0, 0), DEFIO_CPS },
+    { UDATA (&tto_svc, 0, 0), SERIAL_OUT_WAIT },
     { UDATA (&tti_svc, 0, 0), KBD_POLL_WAIT }
     };
 
 REG tty_reg[] = {
-    { FLDATA (UNLOCK, tti_unlock, 0) },
-    { FLDATA (FLAG, tti_flag, 0), REG_HRO },
-    { DRDATA (COL, tto_col, 7) },
-    { DRDATA (KTIME, tty_unit[UTTI].wait, 24), REG_NZ + PV_LEFT },
-    { DRDATA (CPS, tty_unit[UTTO].wait, 24), REG_NZ + PV_LEFT },
+    { FLDATAD (UNLOCK, tti_unlock, 0, "keyboard unlocked flag") },
+    { FLDATAD (FLAG, tti_flag, 0, "set flag on next input digit"), REG_HRO },
+    { DRDATAD (COL, tto_col, 7, "current column") },
+    { DRDATAD (KTIME, tty_unit[UTTI].wait, 24, "keyboard polling interval"), REG_NZ + PV_LEFT },
+    { DRDATAD (TTIME, tty_unit[UTTO].wait, 24, "typewriter character delay"), REG_NZ + PV_LEFT },
+    { DRDATAD (CPS, tty_unit[UTTO].DEFIO_CPS, 24, "Character Output Rate"), PV_LEFT },
+    { DRDATAD (ICPS, tty_unit[UTTI].DEFIO_CPS, 24, "Character Input Rate"), PV_LEFT },
     { NULL }
     };
 
 MTAB tty_mod[] = {
-    { MTAB_XTD|MTAB_VDV, TTO_COLMAX, NULL, "TABS",
-      &sim_tt_settabs, NULL, (void *) tto_tabs },
+    { MTAB_XTD|MTAB_VDV, TTO_COLMAX, NULL, "TABS=col;col;col...",
+      &sim_tt_settabs, NULL, (void *) tto_tabs, "set tab stops at the specified columns" },
     { MTAB_XTD|MTAB_VDV|MTAB_NMO, TTO_COLMAX, "TABS", NULL,
-      NULL, &sim_tt_showtabs, (void *) tto_tabs },
+      NULL, &sim_tt_showtabs, (void *) tto_tabs, "display current tab stops" },
     { MTAB_XTD|MTAB_VDV, 0, NULL, "NOTABS",
-      &tty_set_fixtabs, NULL, NULL },
+      &tty_set_fixtabs, NULL, NULL, "remove all tab stops" },
     { MTAB_XTD|MTAB_VDV, 8, NULL, "DEFAULTTABS",
-      &tty_set_fixtabs, NULL, NULL },
-    { UF_1DIG, UF_1DIG, "combined digits and flags", "1DIGIT", &tty_set_12digit },
-    { UF_1DIG, 0      , "separate digits and flags", "2DIGIT", &tty_set_12digit },
+      &tty_set_fixtabs, NULL, NULL, "set tab stops every eight columns" },
+    { UF_1DIG, UF_1DIG, "combined digits and flags", "1DIGIT", 
+      &tty_set_12digit, NULL, NULL, "type flagged digits as letters" },
+    { UF_1DIG, 0      , "separate digits and flags", "2DIGIT", 
+      &tty_set_12digit, NULL, NULL, "type flagged digits as ~digit" },
     { 0 }
     };
 
@@ -307,7 +311,7 @@ int32 temp;
 int8 raw, c;
 const char *cp;
 
-sim_activate (uptr, uptr->wait);                        /* continue poll */
+DEFIO_ACTIVATE (uptr);                                  /* continue poll */
 if ((temp = sim_poll_kbd ()) < SCPE_KFLAG)              /* no char or error? */
     return temp;
 if (tti_unlock == 0)                                    /* expecting input? */
@@ -389,7 +393,7 @@ if ((cpuio_opc != OP_DN) && (cpuio_cnt >= MEMSIZE)) {   /* wrap, ~dump? */
     cpuio_clr_inp (uptr);                               /* done */
     return STOP_RWRAP;
     }
-sim_activate_after (uptr, 1000000/uptr->wait);          /* sched another xfer */
+DEFIO_ACTIVATE (uptr);                                  /* sched another xfer */
 
 switch (cpuio_opc) {                                    /* decode op */
 

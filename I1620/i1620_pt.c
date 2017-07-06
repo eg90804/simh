@@ -74,13 +74,14 @@ t_stat ptp_num (void);
 */
 
 UNIT ptr_unit = {
-    UDATA (&ptr_svc, UNIT_SEQ+UNIT_ATTABLE+UNIT_ROABLE, 0), DEFIO_CPS
+    UDATA (&ptr_svc, UNIT_SEQ+UNIT_ATTABLE+UNIT_ROABLE, 0), SERIAL_OUT_WAIT
     };
 
 REG ptr_reg[] = {
-    { FLDATA (BIN, ptr_mode, 0) },
-    { DRDATA (POS, ptr_unit.pos, T_ADDR_W), PV_LEFT },
-    { DRDATA (CPS, ptr_unit.wait, 24), PV_LEFT },
+    { FLDATAD (BIN, ptr_mode, 0, "binary mode flag") },
+    { DRDATAD (POS, ptr_unit.pos, T_ADDR_W, "position in the input file"), PV_LEFT },
+    { DRDATAD (TIME, ptr_unit.wait, 24, "reader character delay"), PV_LEFT },
+    { DRDATAD (CPS, ptr_unit.DEFIO_CPS, 24, "Character Input Rate"), PV_LEFT },
     { NULL }
     };
 
@@ -100,13 +101,14 @@ DEVICE ptr_dev = {
 */
 
 UNIT ptp_unit = {
-    UDATA (&ptp_svc, UNIT_SEQ+UNIT_ATTABLE, 0), DEFIO_CPS
+    UDATA (&ptp_svc, UNIT_SEQ+UNIT_ATTABLE, 0), SERIAL_OUT_WAIT
     };
 
 REG ptp_reg[] = {
-    { FLDATA (BIN, ptp_mode, 0) },
-    { DRDATA (POS, ptp_unit.pos, T_ADDR_W), PV_LEFT },
-    { DRDATA (CPS, ptp_unit.wait, 24), PV_LEFT },
+    { FLDATAD (BIN, ptp_mode, 0, "binary mode flag") },
+    { DRDATAD (POS, ptp_unit.pos, T_ADDR_W, "position in the output file"), PV_LEFT },
+    { DRDATAD (TIME, ptp_unit.wait, 24, "punch character delay"), PV_LEFT },
+    { DRDATAD (CPS, ptp_unit.DEFIO_CPS, 24, "Character output rate"), PV_LEFT },
     { NULL }
     };
 
@@ -268,7 +270,7 @@ if (cpuio_cnt >= MEMSIZE) {                             /* over the limit? */
     cpuio_clr_inp (uptr);                               /* done */
     return STOP_RWRAP;
     }
-sim_activate_after (uptr, 1000000/uptr->wait);          /* sched another xfer */
+DEFIO_ACTIVATE (uptr);                                  /* sched another xfer */
 if ((uptr->flags & UNIT_ATT) == 0)                      /* not attached? */
     return SCPE_UNATT;
 
@@ -425,7 +427,7 @@ if ((cpuio_opc != OP_DN) && (cpuio_cnt >= MEMSIZE)) {   /* wrap, ~dump? */
     cpuio_clr_inp (uptr);                               /* done */
     return STOP_RWRAP;
     }
-sim_activate_after (uptr, 1000000/uptr->wait);          /* sched another xfer */
+DEFIO_ACTIVATE (uptr);                                  /* sched another xfer */
 if ((uptr->flags & UNIT_ATT) == 0)                      /* not attached? */
     return SCPE_UNATT;
 
