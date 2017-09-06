@@ -119,6 +119,7 @@
 #include <string.h>
 #include <errno.h>
 #include <limits.h>
+#include <ctype.h>
 
 #ifdef _WIN32
 #include <winsock2.h>
@@ -325,7 +326,6 @@ typedef uint32          t_addr;
 #define SIM_SW_REG      (1u << 28)                      /* register value */
 #define SIM_SW_STOP     (1u << 29)                      /* stop message */
 #define SIM_SW_SHUT     (1u << 30)                      /* shutdown */
-#define SIM_SW_NUM      (1u << 31)                      /* Numeric Switch */
 
 /* Simulator status codes
 

@@ -149,13 +149,65 @@ const char *sim_uname (UNIT *dptr);
 const char *sim_set_uname (UNIT *uptr, const char *uname);
 t_stat get_yn (const char *ques, t_stat deflt);
 char *sim_trim_endspc (char *cptr);
-int sim_isspace (char c);
-int sim_islower (char c);
-int sim_isalpha (char c);
-int sim_isprint (char c);
-int sim_isdigit (char c);
-int sim_isgraph (char c);
-int sim_isalnum (char c);
+int sim_isspace (int c);
+#ifdef isspace
+#undef isspace
+#endif
+#ifndef IN_SCP_C
+#define isspace(chr) sim_isspace (chr)
+#endif
+int sim_islower (int c);
+#ifdef islower
+#undef islower
+#endif
+#ifndef IN_SCP_C
+#define islower(chr) sim_islower (chr)
+#endif
+int sim_isalpha (int c);
+#ifdef isalpha
+#undef isalpha
+#endif
+#ifndef IN_SCP_C
+#define isalpha(chr) sim_isalpha (chr)
+#endif
+int sim_isprint (int c);
+#ifdef isprint
+#undef isprint
+#endif
+#ifndef IN_SCP_C
+#define isprint(chr) sim_isprint (chr)
+#endif
+int sim_isdigit (int c);
+#ifdef isdigit
+#undef isdigit
+#endif
+#ifndef IN_SCP_C
+#define isdigit(chr) sim_isdigit (chr)
+#endif
+int sim_isgraph (int c);
+#ifdef isgraph
+#undef isgraph
+#endif
+#ifndef IN_SCP_C
+#define isgraph(chr) sim_isgraph (chr)
+#endif
+int sim_isalnum (int c);
+#ifdef isalnum
+#undef isalnum
+#endif
+#ifndef IN_SCP_C
+#define isalnum(chr) sim_isalnum (chr)
+#endif
+int sim_toupper (int c);
+int sim_tolower (int c);
+#ifdef toupper
+#undef toupper
+#endif
+#define toupper(chr) sim_toupper(chr)
+#ifdef tolower
+#undef tolower
+#endif
+#define tolower(chr) sim_tolower(chr)
 int sim_strncasecmp (const char *string1, const char *string2, size_t len);
 int sim_strcasecmp (const char *string1, const char *string2);
 size_t sim_strlcat (char *dst, const char *src, size_t size);
@@ -277,6 +329,7 @@ extern DEVICE *sim_dfdev;
 extern UNIT *sim_dfunit;
 extern int32 sim_interval;
 extern int32 sim_switches;
+extern int32 sim_switch_number;
 extern int32 sim_quiet;
 extern int32 sim_step;
 extern t_stat sim_last_cmd_stat;                        /* Command Status */

@@ -214,7 +214,9 @@
 
 /* Macros and data structures */
 
-#define NOT_MUX_USING_CODE /* sim_tmxr library provider or agnostic */
+#define NOT_MUX_USING_CODE  /* sim_tmxr library provider or agnostic */
+
+#define IN_SCP_C 1          /* Include from scp.c */
 
 #include "sim_defs.h"
 #include "sim_rev.h"
@@ -320,7 +322,7 @@
     if (sim_switches & SWMASK ('O')) val = 8; \
     else if (sim_switches & SWMASK ('D')) val = 10; \
     else if (sim_switches & SWMASK ('H')) val = 16; \
-    else if (sim_sw_radix) val = sim_sw_radix; \
+    else if ((sim_switch_number >= 2) && (sim_switch_number <= 36)) val = sim_switch_number; \
     else val = dft;
 
 /* Asynch I/O support */
@@ -472,7 +474,12 @@ SCHTAB *get_rsearch (CONST char *cptr, int32 radix, SCHTAB *schptr);
 SCHTAB *get_asearch (CONST char *cptr, int32 radix, SCHTAB *schptr);
 int32 test_search (t_value *val, SCHTAB *schptr);
 static const char *get_glyph_gen (const char *iptr, char *optr, char mchar, t_bool uc, t_bool quote, char escape_char);
-int32 get_switches (const char *cptr);
+typedef enum {
+    SW_ERROR,           /* Parse Error */
+    SW_BITMASK,         /* Bitmask Value or Not a switch */
+    SW_NUMBER           /* Numeric Value */
+    } SWITCH_PARSE;
+SWITCH_PARSE get_switches (const char *cptr, int32 *sw_val, int32 *sw_number);
 CONST char *get_sim_sw (CONST char *cptr);
 t_stat get_aval (t_addr addr, DEVICE *dptr, UNIT *uptr);
 t_value get_rval (REG *rptr, uint32 idx);
@@ -529,7 +536,7 @@ DEVICE *sim_dflt_dev = NULL;
 UNIT *sim_clock_queue = QUEUE_LIST_END;
 int32 sim_interval = 0;
 int32 sim_switches = 0;
-int32 sim_sw_radix = 0;
+int32 sim_switch_number = 0;
 FILE *sim_ofile = NULL;
 TMLN *sim_oline = NULL;
 MEMFILE *sim_mfile = NULL;
@@ -1227,7 +1234,7 @@ static const char simh_help[] =
       "3Command Prompt\n"
       "+set prompt \"string\"        sets an alternate simulator prompt string\n"
       "3Device and Unit\n"
-      "+set <dev> OCT|DEC|HEX       set device display radix\n"
+      "+set <dev> OCT|DEC|HEX|BIN   set device display radix\n"
       "+set <dev> ENABLED           enable device\n"
       "+set <dev> DISABLED          disable device\n"
       "+set <dev> DEBUG{=arg}       set device debug flags\n"
@@ -1999,6 +2006,7 @@ static C1TAB set_dev_tab[] = {
     { "OCTAL",      &set_dev_radix,     8 },
     { "DECIMAL",    &set_dev_radix,     10 },
     { "HEX",        &set_dev_radix,     16 },
+    { "BINARY",     &set_dev_radix,     2 },
     { "ENABLED",    &set_dev_enbdis,    1 },
     { "DISABLED",   &set_dev_enbdis,    0 },
     { "DEBUG",      &set_dev_debug,     1 },
@@ -2116,7 +2124,7 @@ for (i = 1; i < argc; i++) {                            /* loop thru args */
     if (argv[i] == NULL)                                /* paranoia */
         continue;
     if ((*argv[i] == '-') && lookswitch) {              /* switch? */
-        if ((sw = get_switches (argv[i])) < 0) {
+        if (get_switches (argv[i], &sw, NULL) == SW_ERROR) {
             fprintf (stderr, "Invalid switch %s\n", argv[i]);
             return 0;
             }
@@ -7973,7 +7981,7 @@ while ((*iptr != 0) &&
             }
         }
     if (sim_islower (*iptr) && uc)
-        *optr = (char)toupper (*iptr);
+        *optr = (char)sim_toupper (*iptr);
     else *optr = *iptr;
     iptr++; optr++;
     }
@@ -8028,39 +8036,54 @@ while ((--tptr >= cptr) && sim_isspace (*tptr))
 return cptr;
 }
 
-int sim_isspace (char c)
+int sim_isspace (int c)
 {
-return (c & 0x80) ? 0 : isspace (c);
+return ((c < 0) || (c >= 128)) ? 0 : isspace (c);
 }
 
-int sim_islower (char c)
+int sim_islower (int c)
 {
-return (c & 0x80) ? 0 : islower (c);
+return (c >= 'a') && (c <= 'z');
 }
 
-int sim_isalpha (char c)
+int sim_isupper (int c)
 {
-return (c & 0x80) ? 0 : isalpha (c);
+return (c >= 'A') && (c <= 'Z');
 }
 
-int sim_isprint (char c)
+int sim_toupper (int c)
 {
-return (c & 0x80) ? 0 : isprint (c);
+return ((c >= 'a') && (c <= 'z')) ? ((c - 'a') + 'A') : c;
 }
 
-int sim_isdigit (char c)
+int sim_tolower (int c)
 {
-return (c & 0x80) ? 0 : isdigit (c);
+return ((c >= 'A') && (c <= 'Z')) ? ((c - 'A') + 'a') : c;
 }
 
-int sim_isgraph (char c)
+int sim_isalpha (int c)
 {
-return (c & 0x80) ? 0 : isgraph (c);
+return ((c < 0) || (c >= 128)) ? 0 : isalpha (c);
 }
 
-int sim_isalnum (char c)
+int sim_isprint (int c)
 {
-return (c & 0x80) ? 0 : isalnum (c);
+return ((c < 0) || (c >= 128)) ? 0 : isprint (c);
+}
+
+int sim_isdigit (int c)
+{
+return ((c < 0) || (c >= 128)) ? 0 : isdigit (c);
+}
+
+int sim_isgraph (int c)
+{
+return ((c < 0) || (c >= 128)) ? 0 : isgraph (c);
+}
+
+int sim_isalnum (int c)
+{
+return ((c < 0) || (c >= 128)) ? 0 : isalnum (c);
 }
 
 /* strncasecmp() is not available on all platforms */
@@ -8072,10 +8095,8 @@ unsigned char s1, s2;
 for (i=0; i<len; i++) {
     s1 = (unsigned char)string1[i];
     s2 = (unsigned char)string2[i];
-    if (sim_islower (s1))
-        s1 = (unsigned char)toupper (s1);
-    if (sim_islower (s2))
-        s2 = (unsigned char)toupper (s2);
+    s1 = (unsigned char)sim_toupper (s1);
+    s2 = (unsigned char)sim_toupper (s2);
     if (s1 < s2)
         return -1;
     if (s1 > s2)
@@ -8095,10 +8116,8 @@ unsigned char s1, s2;
 while (1) {
     s1 = (unsigned char)string1[i];
     s2 = (unsigned char)string2[i];
-    if (sim_islower (s1))
-        s1 = (unsigned char)toupper (s1);
-    if (sim_islower (s2))
-        s2 = (unsigned char)toupper (s2);
+    s1 = (unsigned char)sim_toupper (s1);
+    s2 = (unsigned char)sim_toupper (s2);
     if (s1 == s2) {
         if (s1 == 0)
             return 0;
@@ -8411,12 +8430,12 @@ while (iptr[1]) {               /* Skip trailing quote */
 
                 ++iptr;
                 *optr = 0;
-                c = strchr (hex_digits, toupper(*iptr));
+                c = strchr (hex_digits, sim_toupper(*iptr));
                 if (c) {
                     *optr = ((*optr)<<4) + (uint8)(c-hex_digits);
                     ++iptr;
                     }
-                c = strchr (hex_digits, toupper(*iptr));
+                c = strchr (hex_digits, sim_toupper(*iptr));
                 if (c) {
                     *optr = ((*optr)<<4) + (uint8)(c-hex_digits);
                     ++iptr;
@@ -8774,31 +8793,35 @@ return NULL;
    Inputs:
         cptr    =       pointer to input string
    Outputs:
-        sw      =       switch bit mask
-                        0 if no switches, -1 if error
+        *sw      =       switch bit mask
+        *mumber  =       numeric value
+   Return value:        SW_ERROR     if error
+                        SW_BITMASK   if switch bitmask or not a switch
+                        SW_NUMBER    if numeric
 */
 
-int32 get_switches (const char *cptr)
+SWITCH_PARSE get_switches (const char *cptr, int32 *sw, int32 *number)
 {
-int32 sw;
-
+*sw = 0;
 if (*cptr != '-')
-    return 0;
-sw = 0;
+    return SW_BITMASK;
+if (number)
+    *number = 0;
 if (sim_isdigit(cptr[1])) {
     char *end;
     long val = strtol (1+cptr, &end, 10);
 
-    if (*end != 0)
-        return -1;
-    return (int32)(SIM_SW_NUM | (val));
+    if ((*end != 0) || (number == NULL))
+        return SW_ERROR;
+    *number = (int32)val;
+    return SW_NUMBER;
     }
 for (cptr++; (sim_isspace (*cptr) == 0) && (*cptr != 0); cptr++) {
     if (sim_isalpha (*cptr) == 0)
-        return -1;
-    sw = sw | SWMASK (toupper (*cptr));
+        return SW_ERROR;
+    *sw = *sw | SWMASK (sim_toupper (*cptr));
     }
-return sw;
+return SW_BITMASK;
 }
 
 /* get_sim_sw           accumulate sim_switches
@@ -8812,18 +8835,21 @@ return sw;
 
 CONST char *get_sim_sw (CONST char *cptr)
 {
-int32 lsw;
+int32 lsw, lnum;
 char gbuf[CBUFSIZE];
 
 while (*cptr == '-') {                                  /* while switches */
     cptr = get_glyph (cptr, gbuf, 0);                   /* get switch glyph */
-    lsw = get_switches (gbuf);                          /* parse */
-    if (lsw <= 0) {                                     /* invalid or numeric? */
-        if ((lsw == -1) || (lsw == 0))
+    switch (get_switches (gbuf, &lsw, &lnum)) {         /* parse */
+        case SW_ERROR:
             return NULL;
-        sim_sw_radix = lsw & ~SIM_SW_NUM;               /* set radix */
+        case SW_BITMASK:
+            sim_switches = sim_switches | lsw;          /* accumulate */
+            break;
+        case SW_NUMBER:
+            sim_switch_number = lnum;                   /* set number */
+            break;
         }
-    sim_switches = sim_switches | lsw;                  /* accumulate */
     }
 return cptr;
 }
@@ -8840,14 +8866,14 @@ return cptr;
 
 CONST char *get_sim_opt (int32 opt, CONST char *cptr, t_stat *st)
 {
-int32 t;
+int32 t, n;
 char gbuf[CBUFSIZE];
 CONST char *svptr;
 DEVICE *tdptr;
 UNIT *tuptr;
 
 sim_switches = 0;                                       /* no switches */
-sim_sw_radix = 0;                                       /* no radix override */
+sim_switch_number = 0;                                  /* no numberuc switch */
 sim_ofile = NULL;                                       /* no output file */
 sim_schrptr = NULL;                                     /* no search */
 sim_schaptr = NULL;                                     /* no search */
@@ -8885,18 +8911,21 @@ while (*cptr) {                                         /* loop through modifier
         continue;
         }
     cptr = get_glyph (cptr, gbuf, 0);
-    if ((t = get_switches (gbuf)) != 0) {               /* try for switches */
-        if (t < 0) {                                    /* if bad switch or numeric */
-            if (t == -1) {                              /* err if bad switch */
-                *st = SCPE_INVSW;
-                return NULL;
+    switch (get_switches (gbuf, &t, &n)) {      /* try for switches */
+        case SW_ERROR:                          /* err if bad switch */
+            *st = SCPE_INVSW;
+            return NULL;
+        case SW_NUMBER:
+            sim_switch_number = n;              /* set number */
+            continue;
+        case SW_BITMASK:
+            if (t != 0) {
+                sim_switches = sim_switches | t;/* or in new switches */
+                continue;
                 }
-            sim_sw_radix = t & ~SIM_SW_NUM;             /* set radix */
-            }
-        else
-            sim_switches = sim_switches | t;            /* or in new switches */
+            break;
         }
-    else if ((opt & CMD_OPT_SCH) &&                     /* if allowed, */
+    if ((opt & CMD_OPT_SCH) &&                     /* if allowed, */
         get_rsearch (gbuf, sim_dfdev->dradix, &sim_stabr)) { /* try for search */
         sim_schrptr = &sim_stabr;                       /* set search */
         sim_schaptr = get_asearch (gbuf, sim_dfdev->dradix, &sim_staba);/* populate memory version of the same expression */
@@ -8968,7 +8997,7 @@ if (pptr) {                                             /* any? */
     *fptr != 0;                                         /* others: stop at null */
 #endif
     fptr++, eptr++) {
-        if (toupper (*fptr) != toupper (*eptr))
+        if (sim_toupper (*fptr) != sim_toupper (*eptr))
             return NULL;
         }
     if (*eptr != 0)                                     /* ext exhausted? */
@@ -9233,8 +9262,7 @@ while (sim_isspace (*inptr))                            /* bypass white space */
 val = 0;
 nodigit = 1;
 for (c = *inptr; sim_isalnum(c); c = *++inptr) {        /* loop through char */
-    if (sim_islower (c))
-        c = toupper (c);
+    c = sim_toupper (c);
     if (sim_isdigit (c))                                /* digit? */
         digit = c - (uint32) '0';
     else if (radix <= 10)                               /* stop if not expected */
@@ -10425,7 +10453,7 @@ if ((!strncmp(gbuf, "HALTAFTER=", 10)) && (gbuf[10])) {
     after_set = TRUE;
     cptr = tptr;
     }
-if ((*cptr != '"') && (*cptr != '\''))
+if ((*cptr != '\0') && (*cptr != '"') && (*cptr != '\''))
     return sim_messagef (SCPE_ARG, "String must be quote delimited\n");
 cptr = get_glyph_quoted (cptr, gbuf, 0);
 
@@ -10528,6 +10556,11 @@ uint8 *match_buf;
 uint32 match_size;
 int i;
 
+/* Hsndle a bare HALTAFTER=nnn command */
+if ((*match == '\0') && (*act == '\0') && after) {
+    exp->after = after;
+    return SCPE_OK;
+    }
 /* Validate the match string */
 match_buf = (uint8 *)calloc (strlen (match) + 1, 1);
 if (!match_buf)
@@ -11794,7 +11827,7 @@ for (hblock = astrings; (htext = *hblock) != NULL; hblock++) {
                 while (n > vsnum)               /* Get arg pointer if not cached */
                     vstrings[vsnum++] = va_arg (ap, char *);
                 end = vstrings[n-1];            /* Check for True */
-                if (!end || !(toupper (*end) == 'T' || *end == '1')) {
+                if (!end || !(sim_toupper (*end) == 'T' || *end == '1')) {
                     excluded = TRUE;            /* False, skip topic this time */
                     if (*htext)
                         htext++;
@@ -12023,7 +12056,7 @@ for (i = 0; i < topic->kids; i++) {
             *cptr++ = '_';
             } 
         else {
-            *cptr = (char)toupper (*cptr);
+            *cptr = (char)sim_toupper (*cptr);
             cptr++;
             }
         }
@@ -12095,7 +12128,7 @@ else
     p = sim_name;
 top.title = (char *) malloc (strlen (p) + ((flag & SCP_HELP_ATTACH)? sizeof (attach_help)-1: 0) +1);
 for (i = 0; p[i]; i++ )
-    top.title[i] = (char)toupper (p[i]);
+    top.title[i] = (char)sim_toupper (p[i]);
 top.title[i] = '\0';
 if (flag & SCP_HELP_ATTACH)
     strcpy (top.title+i, attach_help);
