@@ -563,6 +563,10 @@ int32 sim_brk_lnt = 0;
 int32 sim_brk_ins = 0;
 int32 sim_quiet = 0;
 int32 sim_step = 0;
+char *sim_sub_instr = NULL;
+char *sim_sub_instr_buf = NULL;
+size_t sim_sub_instr_size = 0;
+size_t *sim_sub_instr_off = NULL;
 static double sim_time;
 static uint32 sim_rtime;
 static int32 noqueue_time;
@@ -1377,8 +1381,8 @@ static const char simh_help[] =
       "+Token %%0 expands to the command file name.\n"
       "+Token %%n (n being a single digit) expands to the n'th argument\n"
       "+Token %%* expands to the whole set of arguments (%%1 ... %%9)\n\n"
-      "+The input sequence \"%%%%\" represents a literal \"%%\", and \"\\\\\" represents a\n"
-      "+literal \"\\\".  All other character combinations are rendered literally.\n\n"
+      "+The input sequence \"%%%%\" represents a literal \"%%\".  All other\n"
+      "+character combinations are rendered literally.\n\n"
       "+Omitted parameters result in null-string substitutions.\n\n"
       "+Tokens preceeded and followed by %% characters are expanded as environment\n"
       "+variables, and if an environment variable isn't found then it can be one of\n"
@@ -3213,8 +3217,8 @@ return stat | SCPE_NOMESSAGE;                           /* suppress message sinc
    Token %n (n being a single digit) expands to the n'th argument
    Tonen %* expands to the whole set of arguments (%1 ... %9)
 
-   The input sequence "\%" represents a literal "%", and "\\" represents a
-   literal "\".  All other character combinations are rendered literally.
+   The input sequence "%%" represents a literal "%".  All other 
+   character combinations are rendered literally.
 
    Omitted parameters result in null-string substitutions.
 
@@ -3251,6 +3255,8 @@ char *ip = instr, *op, *oend, *istart, *tmpbuf;
 const char *ap;
 char rbuf[CBUFSIZE];
 int i;
+size_t instr_off = 0;
+size_t outstr_off = 0;
 time_t now;
 struct tm *tmnow;
 
@@ -3259,14 +3265,23 @@ tmnow = localtime(&now);
 tmpbuf = (char *)malloc(instr_size);
 op = tmpbuf;
 oend = tmpbuf + instr_size - 2;
-while (sim_isspace (*ip))                                   /* skip leading spaces */
+if (instr_size > sim_sub_instr_size) {
+    sim_sub_instr = (char *)realloc (sim_sub_instr, instr_size*sizeof(*sim_sub_instr));
+    sim_sub_instr_off = (size_t *)realloc (sim_sub_instr_off, instr_size*sizeof(*sim_sub_instr_off));
+    sim_sub_instr_size = instr_size;
+    }
+sim_sub_instr_buf = instr;
+strlcpy (sim_sub_instr, instr, instr_size*sizeof(*sim_sub_instr));
+while (sim_isspace (*ip)) {                                 /* skip leading spaces */
+    sim_sub_instr_off[outstr_off++] = ip - instr;
     *op++ = *ip++;
+    }
 istart = ip;
 for (; *ip && (op < oend); ) {
-    if ((ip [0] == '\\') &&                             /* literal escape? */
-        ((ip [1] == '%') || (ip [1] == '\\'))) {        /*   and followed by '%' or '\'? */
-        ip++;                                           /* skip '\' */
-        *op++ = *ip++;                                  /* copy escaped char */
+    if ((ip [0] == '%') && (ip [1] == '%')) {           /* literal % insert? */
+        sim_sub_instr_off[outstr_off++] = ip - instr;
+        ip++;                                           /* skip one */
+        *op++ = *ip++;                                  /* copy insert % */
         }
     else 
         if ((*ip == '%') && 
@@ -3469,8 +3484,10 @@ for (; *ip && (op < oend); ) {
                     }
                 }
             if (ap) {                                   /* non-null arg? */
-                while (*ap && (op < oend))              /* copy the argument */
+                while (*ap && (op < oend)) {            /* copy the argument */
+                    sim_sub_instr_off[outstr_off++] = ip - instr;
                     *op++ = *ap++;
+                    }
                 }
             }
         else
@@ -3478,17 +3495,23 @@ for (; *ip && (op < oend); ) {
                 get_glyph (istart, gbuf, 0);            /* substitute initial token */
                 ap = getenv(gbuf);                      /* if it is an environment variable name */
                 if (!ap) {                              /* nope? */
+                    sim_sub_instr_off[outstr_off++] = ip - instr;
                     *op++ = *ip++;                      /* press on with literal character */
                     continue;
                     }
-                while (*ap && (op < oend))              /* copy the translation */
+                while (*ap && (op < oend)) {            /* copy the translation */
+                    sim_sub_instr_off[outstr_off++] = ip - instr;
                     *op++ = *ap++;
+                    }
                 ip += strlen(gbuf);
                 }
-            else
+            else {
+                sim_sub_instr_off[outstr_off++] = ip - instr;
                 *op++ = *ip++;                          /* literal character */
+                }
     }
 *op = 0;                                                /* term buffer */
+sim_sub_instr_off[outstr_off] = 0;
 strcpy (instr, tmpbuf);
 free (tmpbuf);
 return;
@@ -3560,7 +3583,6 @@ char gbuf[CBUFSIZE], gbuf2[CBUFSIZE];
 CONST char *tptr, *gptr;
 REG *rptr;
 uint32 idx;
-t_value val;
 t_stat r;
 t_bool Not = FALSE;
 t_bool Exist = FALSE;
@@ -3688,8 +3710,8 @@ else {
         if (!get_rsearch (gbuf, rptr->radix, &sim_stabr) ||  /* parse condition */
             (sim_stabr.boolop == -1))                   /* relational op reqd */
             return SCPE_MISVAL;
-        val = get_rval (rptr, idx);                     /* get register value */
-        result = test_search (&val, &sim_stabr);        /* test condition */
+        sim_eval[0] = get_rval (rptr, idx);             /* get register value */
+        result = test_search (sim_eval, &sim_stabr);    /* test condition */
         }
     else {                                              /* Handle memory case */
         if (!get_asearch (gbuf, sim_dfdev ? sim_dfdev->dradix : sim_dflt_dev->dradix, &sim_staba) ||  /* parse condition */
@@ -5606,12 +5628,15 @@ if (uptr == NULL)
 max = uptr->capac - 1;
 abuf[sizeof(abuf)-1] = '\0';
 strncpy (abuf, cptr, sizeof(abuf)-1);
-cptr = abuf;
 if ((aptr = strchr (abuf, ';'))) {                      /* ;action? */
+    cptr += aptr - abuf + 1;
     if (flg != SSH_ST)                                  /* only on SET */
-        return sim_messagef (SCPE_ARG, "Invalid argument: %s\n", aptr);
+        return sim_messagef (SCPE_ARG, "Invalid argument: %s\n", cptr);
     *aptr++ = 0;                                        /* separate strings */
+    if ((cptr > sim_sub_instr_buf) && ((size_t)(cptr - sim_sub_instr_buf) < sim_sub_instr_size))
+        aptr = &sim_sub_instr[sim_sub_instr_off[cptr - sim_sub_instr_buf]]; /* get un-substituted string */
     }
+cptr = abuf;
 if (*cptr == 0) {                                       /* no argument? */
     lo = (t_addr) get_rval (sim_PC, 0);                 /* use PC */
     return ssh_break_one (st, flg, lo, 0, aptr);
@@ -7264,9 +7289,9 @@ for (rptr = lowr; rptr <= highr; rptr++) {
     for (idx = lows; idx <= highs; idx++) {
         if (idx >= rptr->depth)
             return SCPE_SUB;
-        val = get_rval (rptr, idx);
+        sim_eval[0] = val = get_rval (rptr, idx);
         sim_switches = saved_switches;
-        if (schptr && !test_search (&val, schptr))
+        if (schptr && !test_search (sim_eval, schptr))
             continue;
         if (flag == EX_E) {
             if ((idx > lows) && (val == last_val))
@@ -7381,11 +7406,12 @@ else
     fprintf (ofile, "%s:\t", rptr->name);
 if (!(flag & EX_E))
     return SCPE_OK;
+sim_eval[0] = val;
 GET_RADIX (rdx, rptr->radix);
 if ((rptr->flags & REG_VMAD) && sim_vm_fprint_addr)
     sim_vm_fprint_addr (ofile, sim_dflt_dev, (t_addr) val);
 else if (!(rptr->flags & REG_VMFLAGS) ||
-    (fprint_sym (ofile, (rptr->flags & REG_UFMASK) | rdx, &val,
+    (fprint_sym (ofile, (rptr->flags & REG_UFMASK) | rdx, sim_eval,
                  NULL, sim_switches | SIM_SW_REG) > 0)) {
         fprint_val (ofile, val, rdx, rptr->width, rptr->flags & REG_FMT);
         if (rptr->fields) {
@@ -10543,7 +10569,7 @@ exp->size = 0;
 free (exp->buf);
 exp->buf = NULL;
 exp->buf_size = 0;
-exp->buf_ins = 0;
+exp->buf_data = exp->buf_ins = 0;
 return SCPE_OK;
 }
 
@@ -10651,7 +10677,11 @@ if (ep->act) {                                          /* replace old action? *
 if (act)
     while (sim_isspace(*act)) ++act;                    /* skip leading spaces in action string */
 if ((act != NULL) && (*act != 0)) {                     /* new action? */
-    char *newp = (char *) calloc (strlen (act)+1, sizeof (*act)); /* alloc buf */
+    char *newp;
+
+    if ((act > sim_sub_instr_buf) && ((size_t)(act - sim_sub_instr_buf) < sim_sub_instr_size))
+        act = &sim_sub_instr[sim_sub_instr_off[act - sim_sub_instr_buf]]; /* get un-substituted string */
+    newp = (char *) calloc (strlen (act)+1, sizeof (*act)); /* alloc buf */
     if (newp == NULL)                                   /* mem err? */
         return SCPE_MEM;
     strcpy (newp, act);                                 /* copy action */
@@ -10747,6 +10777,8 @@ if ((!exp) || (!exp->rules))                            /* Anying to check? */
 
 exp->buf[exp->buf_ins++] = data;                        /* Save new data */
 exp->buf[exp->buf_ins] = '\0';                          /* Nul terminate for RegEx match */
+if (exp->buf_data < exp->buf_size)
+    ++exp->buf_data;                                    /* Record amount of data in buffer */
 
 for (i=0; i < exp->size; i++) {
     ep = &exp->rules[i];
@@ -10761,8 +10793,8 @@ for (i=0; i < exp->size; i++) {
         else {
             if (strlen ((char *)exp->buf) != exp->buf_ins) { /* Nul characters in buffer? */
                 size_t off;
-                tstr = (char *)malloc (exp->buf_ins + 1);
 
+                tstr = (char *)malloc (exp->buf_ins + 1);
                 tstr[0] = '\0';
                 for (off=0; off < exp->buf_ins; off += 1 + strlen ((char *)&exp->buf[off]))
                     strcpy (&tstr[strlen (tstr)], (char *)&exp->buf[off]);
@@ -10805,7 +10837,9 @@ for (i=0; i < exp->size; i++) {
 #endif
         }
     else {
-        if (exp->buf_ins < ep->size) {                          /* Match stradle end of buffer */
+        if (exp->buf_data < ep->size)                           /* Too little data to match yet? */
+            continue;                                           /* Yes, Try next one. */
+        if (exp->buf_ins < ep->size) {                          /* Match might stradle end of buffer */
             /* 
              * First compare the newly deposited data at the beginning 
              * of buffer with the end of the match string
@@ -10820,8 +10854,8 @@ for (i=0; i < exp->size; i++) {
                     free (estr);
                     free (mstr);
                     }
-                if (memcmp (exp->buf, &ep->match[ep->size-exp->buf_ins], exp->buf_ins))
-                    continue;
+                if (memcmp (exp->buf, &ep->match[ep->size-exp->buf_ins], exp->buf_ins)) /* Tail Match? */
+                    continue;                                   /* Nope, Try next one. */
                 }
             if (sim_deb && exp->dptr && (exp->dptr->dctrl & exp->dbit)) {
                 char *estr = sim_encode_quoted_string (&exp->buf[exp->buf_size-(ep->size-exp->buf_ins)], ep->size-exp->buf_ins);
@@ -10832,8 +10866,8 @@ for (i=0; i < exp->size; i++) {
                 free (estr);
                 free (mstr);
                 }
-            if (memcmp (&exp->buf[exp->buf_size-(ep->size-exp->buf_ins)], ep->match, ep->size-exp->buf_ins))
-                continue;
+            if (memcmp (&exp->buf[exp->buf_size-(ep->size-exp->buf_ins)], ep->match, ep->size-exp->buf_ins)) /* Front Match? */
+                continue;                                       /* Nope, Try next one. */
             break;
             }
         else {
@@ -10846,8 +10880,8 @@ for (i=0; i < exp->size; i++) {
                 free (estr);
                 free (mstr);
                 }
-            if (memcmp (&exp->buf[exp->buf_ins-ep->size], ep->match, ep->size))
-                continue;
+            if (memcmp (&exp->buf[exp->buf_ins-ep->size], ep->match, ep->size)) /* Whole string match? */
+                continue;                                       /* Nope, Try next one. */
             break;
             }
         }
@@ -10861,6 +10895,7 @@ if (exp->buf_ins == exp->buf_size) {                    /* At end of match buffe
            used when no regular expression rules are in effect */
         memmove (exp->buf, &exp->buf[exp->buf_size/2], exp->buf_size-(exp->buf_size/2));
         exp->buf_ins -= exp->buf_size/2;
+        exp->buf_data = exp->buf_ins;
         sim_debug (exp->dbit, exp->dptr, "Buffer Full - sliding the last %d bytes to start of buffer new insert at: %d\n", (exp->buf_size/2), exp->buf_ins);
         }
     else {
@@ -10896,7 +10931,7 @@ if (i != exp->size) {                                   /* Found? */
                             exp->after);
         }
     /* Matched data is no longer available for future matching */
-    exp->buf_ins = 0;
+    exp->buf_data = exp->buf_ins = 0;
     }
 free (tstr);
 return SCPE_OK;
