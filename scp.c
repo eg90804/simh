@@ -588,6 +588,7 @@ static int32 sim_do_echo = 0;                           /* the echo status of th
 static int32 sim_show_message = 1;                      /* the message display status of the currently open do file */
 static int32 sim_on_inherit = 0;                        /* the inherit status of on state and conditions when executing do files */
 static int32 sim_do_depth = 0;
+static t_bool sim_cmd_echoed = FALSE;                   /* Command was emitted already prior to message output */
 
 static int32 sim_on_check[MAX_DO_NEST_LVL+1];
 static char *sim_on_actions[MAX_DO_NEST_LVL+1][SCPE_MAX_ERR+1];
@@ -991,7 +992,7 @@ static const char simh_help[] =
       " attached read only, its contents can be examined but not modified.\n"
       "5-q\n"
       " If the -q switch is specified when creating a new file (-n) or opening one\n"
-      " read only (-r), the message announcing this fact is suppressed.\n"
+      " read only (-r), any messages announcing these facts will be suppressed.\n"
       "5-f\n"
       " For simulated magnetic tapes, the ATTACH command can specify the format of\n"
       " the attached tape image file:\n\n"
@@ -1780,6 +1781,15 @@ ASSERT      failure have several different actions:
       " delay has expired, only a single EXPECT rule can be defined if a non-zero\n"
       " HaltAfter parameter has been set.\n"
       /***************** 80 character line width template *************************/
+#define HLP_SLEEP       "*Commands Executing_Command_Files Pausing_Command_Execution"
+      "3Pausing Command Execution\n"
+      " A simulator command file may wait for a specific period of time with the\n\n"
+      "++SLEEP NUMBER[SUFFIX]...\n\n"
+      " Pause for NUMBER seconds.  SUFFIX may be 's' for seconds (the default),\n"
+      " 'm' for minutes, 'h' for hours or 'd' for days.  NUMBER may be an\n"
+      " arbitrary floating point number.  Given two or more arguments, pause\n"
+      " for the amount of time specified by the sum of their values.\n\n"
+      /***************** 80 character line width template *************************/
 #define HLP_ASSERT      "*Commands Executing_Command_Files Testing_Simulator_State"
 #define HLP_IF          "*Commands Executing_Command_Files Testing_Simulator_State"
       "3Testing Simulator State\n"
@@ -1974,6 +1984,7 @@ static CTAB cmd_table[] = {
     { "NOSEND",     &send_cmd,      0,          HLP_SEND },
     { "EXPECT",     &expect_cmd,    1,          HLP_EXPECT },
     { "NOEXPECT",   &expect_cmd,    0,          HLP_EXPECT },
+    { "SLEEP",      &sleep_cmd,     0,          HLP_SLEEP },
     { "!",          &spawn_cmd,     0,          HLP_SPAWN },
     { "HELP",       &help_cmd,      0,          HLP_HELP },
 #if defined(USE_SIM_VIDEO)
@@ -2217,6 +2228,7 @@ if (*argv[0]) {                                         /* sim name arg? */
         np = strrchr (nbuf, ']');                       /* VMS path separator */
     if (np != NULL)
         setenv ("SIM_BIN_NAME", np+1, 1);               /* Publish simulator binary name */
+    setenv ("SIM_BIN_PATH", argv[0], 1);
     }
 sim_argv = argv;
 cptr = getenv("HOME");
@@ -2299,6 +2311,7 @@ while (stat != SCPE_EXIT) {                             /* in case exit */
         }
     if (*cptr == 0)                                     /* ignore blank */
         continue;
+    sim_cmd_echoed = TRUE;
     sim_sub_args (cbuf, sizeof(cbuf), argv);
     if (sim_log)                                        /* log cmd */
         fprintf (sim_log, "%s%s\n", sim_prompt, cptr);
@@ -2339,7 +2352,7 @@ if ((!cptr) || (*cptr == '\0'))
 cptr = get_glyph_nc (cptr, gbuf, '"');                  /* get quote delimited token */
 if (gbuf[0] == '\0') {                                  /* Token started with quote */
     gbuf[sizeof (gbuf)-1] = '\0';
-    strncpy (gbuf, cptr, sizeof (gbuf)-1);
+    strlcpy (gbuf, cptr, sizeof (gbuf));
     gptr = strchr (gbuf, '"');
     if (gptr)
         *gptr = '\0';
@@ -3021,7 +3034,7 @@ sim_on_inherit =(sim_switches & SWMASK ('O')) || sim_on_inherit; /* -o means inh
 errabort = sim_switches & SWMASK ('E');                 /* -e means abort on error */
 
 abuf[sizeof(abuf)-1] = '\0';
-strncpy (abuf, fcptr, sizeof(abuf)-1);
+strlcpy (abuf, fcptr, sizeof(abuf));
 c = abuf;
 do_arg[10] = NULL;                                      /* make sure the argument list always ends with a NULL */
 for (nargs = 0; nargs < 10; ) {                         /* extract arguments */
@@ -3109,6 +3122,7 @@ do {
         continue;
     if (echo)                                           /* echo if -v */
         sim_printf("%s> %s\n", do_position(), cptr);
+    sim_cmd_echoed = echo;
     if (*cptr == ':')                                   /* ignore label */
         continue;
     cptr = get_glyph_cmd (cptr, gbuf);                  /* get command glyph */
@@ -3157,7 +3171,7 @@ do {
         }
     if ((stat >= SCPE_BASE) && (stat != SCPE_EXIT) &&   /* error from cmd? */
         (stat != SCPE_STEP)) {
-        if (!echo && !sim_quiet &&                      /* report if not echoing */
+        if (!echo &&                                    /* report if not echoing */
             !stat_nomessage &&                          /* and not suppressing messages */
             !(cmdp && cmdp->message)) {                 /* and not handling them specially */
             sim_printf("%s> %s\n", do_position(), sim_do_ocptr[sim_do_depth]);
@@ -3191,8 +3205,8 @@ if (flag >= 0) {
     sim_do_echo = saved_sim_do_echo;                    /* restore echo state we entered with */
     sim_show_message = saved_sim_show_message;          /* restore message display state we entered with */
     sim_on_inherit = saved_sim_on_inherit;              /* restore ON inheritance state we entered with */
+    sim_quiet = saved_sim_quiet;                        /* restore quiet mode we entered with */
     }
-sim_quiet = saved_sim_quiet;                            /* restore quiet mode we entered with */
 if ((flag >= 0) || (!sim_on_inherit)) {
     for (i=0; i<SCPE_MAX_ERR; i++) {                    /* release any on commands */
         free (sim_on_actions[sim_do_depth][i]);
@@ -3959,6 +3973,52 @@ if (*cptr && (cptr[strlen(cptr)-1] != '"') && (cptr[strlen(cptr)-1] != '\''))
 return sim_exp_show (st, exp, gbuf);
 }
 
+
+/* Sleep command */
+
+t_stat sleep_cmd (int32 flag, CONST char *cptr)
+{
+char *tptr;
+double wait;
+
+while (*cptr) {
+    wait = strtod (cptr, &tptr);
+    switch (*tptr) {
+        case ' ':
+        case '\t':
+        case '\0':
+            break;
+        case 's':
+        case 'S':
+            ++tptr;
+            break;
+        case 'm':
+        case 'M':
+            ++tptr;
+            wait *= 60.0;
+            break;
+        case 'h':
+        case 'H':
+            ++tptr;
+            wait *= (60.0*60.0);
+            break;
+        case 'd':
+        case 'D':
+            ++tptr;
+            wait *= (24.0*60.0*60.0);
+            break;
+        default:
+            return sim_messagef (SCPE_ARG, "Invalid Sleep unit '%c'\n", *cptr);
+        }
+    wait *= 1000.0;                             /* Convert to Milliseconds */
+    cptr = tptr;
+    while (wait > 1000.0)
+        wait -= sim_os_ms_sleep (1000);
+    if (wait > 0.0)
+        sim_os_ms_sleep ((unsigned)wait);
+    }
+return SCPE_OK;
+}
 
 /* Goto command */
 
@@ -5258,7 +5318,7 @@ if (sim_is_running)
 if ((!cptr) || (*cptr == 0))
     return SCPE_2FARG;
 gbuf[sizeof(gbuf)-1] = '\0';
-strncpy (gbuf, cptr, sizeof(gbuf)-1);
+strlcpy (gbuf, cptr, sizeof(gbuf));
 sim_trim_endspc(gbuf);
 if (chdir(gbuf) != 0)
     return sim_messagef(SCPE_IOERR, "Unable to directory change to: %s\n", gbuf);
@@ -5554,7 +5614,7 @@ char lbuf[4*CBUFSIZE];
 if ((!cptr) || (*cptr == 0))
     return SCPE_2FARG;
 lbuf[sizeof(lbuf)-1] = '\0';
-strncpy (lbuf, cptr, sizeof(lbuf)-1);
+strlcpy (lbuf, cptr, sizeof(lbuf));
 sim_trim_endspc(lbuf);
 file = sim_fopen (lbuf, "r");
 if (file == NULL) {                         /* open failed? */
@@ -5691,7 +5751,7 @@ if (uptr == NULL)
     return SCPE_IERR;
 max = uptr->capac - 1;
 abuf[sizeof(abuf)-1] = '\0';
-strncpy (abuf, cptr, sizeof(abuf)-1);
+strlcpy (abuf, cptr, sizeof(abuf));
 if ((aptr = strchr (abuf, ';'))) {                      /* ;action? */
     cptr += aptr - abuf + 1;
     if (flg != SSH_ST)                                  /* only on SET */
@@ -5942,7 +6002,7 @@ if (uptr->flags & UNIT_ATT) {                           /* already attached? */
         }
     }
 gbuf[sizeof(gbuf)-1] = '\0';
-strncpy (gbuf, cptr, sizeof(gbuf)-1);
+strlcpy (gbuf, cptr, sizeof(gbuf));
 sim_trim_endspc (gbuf);                                 /* trim trailing spc */
 return scp_attach_unit (dptr, uptr, gbuf);              /* attach */
 }
@@ -5971,7 +6031,7 @@ if ((dptr = find_dev_from_unit (uptr)) == NULL)
 uptr->filename = (char *) calloc (CBUFSIZE, sizeof (char)); /* alloc name buf */
 if (uptr->filename == NULL)
     return SCPE_MEM;
-strncpy (uptr->filename, cptr, CBUFSIZE);               /* save name */
+strlcpy (uptr->filename, cptr, CBUFSIZE);               /* save name */
 if ((sim_switches & SWMASK ('R')) ||                    /* read only? */
     ((uptr->flags & UNIT_RO) != 0)) {
     if (((uptr->flags & UNIT_ROABLE) == 0) &&           /* allowed? */
@@ -5981,18 +6041,14 @@ if ((sim_switches & SWMASK ('R')) ||                    /* read only? */
     if (uptr->fileref == NULL)                          /* open fail? */
         return attach_err (uptr, SCPE_OPENERR);         /* yes, error */
     uptr->flags = uptr->flags | UNIT_RO;                /* set rd only */
-    if (!sim_quiet && !(sim_switches & SWMASK ('Q'))) {
-        sim_printf ("%s: unit is read only\n", sim_dname (dptr));
-        }
+    sim_messagef (SCPE_OK, "%s: unit is read only\n", sim_dname (dptr));
     }
 else {
     if (sim_switches & SWMASK ('N')) {                  /* new file only? */
         uptr->fileref = sim_fopen (cptr, "wb+");        /* open new file */
         if (uptr->fileref == NULL)                      /* open fail? */
             return attach_err (uptr, SCPE_OPENERR);     /* yes, error */
-        if (!sim_quiet && !(sim_switches & SWMASK ('Q'))) {
-            sim_printf ("%s: creating new file\n", sim_dname (dptr));
-            }
+        sim_messagef (SCPE_OK, "%s: creating new file\n", sim_dname (dptr));
         }
     else {                                              /* normal */
         uptr->fileref = sim_fopen (cptr, "rb+");        /* open r/w */
@@ -6008,9 +6064,7 @@ else {
                 if (uptr->fileref == NULL)              /* open fail? */
                     return attach_err (uptr, SCPE_OPENERR); /* yes, error */
                 uptr->flags = uptr->flags | UNIT_RO;    /* set rd only */
-                if (!sim_quiet) {
-                    sim_printf ("%s: unit is read only\n", sim_dname (dptr));
-                    }
+                sim_messagef (SCPE_OK, "%s: unit is read only\n", sim_dname (dptr));
                 }
             else {                                      /* doesn't exist */
                 if (sim_switches & SWMASK ('E'))        /* must exist? */
@@ -6018,9 +6072,7 @@ else {
                 uptr->fileref = sim_fopen (cptr, "wb+");/* open new file */
                 if (uptr->fileref == NULL)              /* open fail? */
                     return attach_err (uptr, SCPE_OPENERR); /* yes, error */
-                if (!sim_quiet) {
-                    sim_printf ("%s: creating new file\n", sim_dname (dptr));
-                    }
+                sim_messagef (SCPE_OK, "%s: creating new file\n", sim_dname (dptr));
                 }
             }                                           /* end if null */
         }                                               /* end else */
@@ -6031,9 +6083,7 @@ if (uptr->flags & UNIT_BUFABLE) {                       /* buffer? */
         uptr->filebuf = calloc (cap, SZ_D (dptr));      /* allocate */
     if (uptr->filebuf == NULL)                          /* no buffer? */
         return attach_err (uptr, SCPE_MEM);             /* error */
-    if (!sim_quiet) {
-        sim_printf ("%s: buffering file in memory\n", sim_dname (dptr));
-        }
+    sim_messagef (SCPE_OK, "%s: buffering file in memory\n", sim_dname (dptr));
     uptr->hwmark = (uint32)sim_fread (uptr->filebuf,    /* read file */
         SZ_D (dptr), cap, uptr->fileref);
     uptr->flags = uptr->flags | UNIT_BUF;               /* set buffered */
@@ -6149,9 +6199,7 @@ if ((dptr = find_dev_from_unit (uptr)) == NULL)
 if ((uptr->flags & UNIT_BUF) && (uptr->filebuf)) {
     uint32 cap = (uptr->hwmark + dptr->aincr - 1) / dptr->aincr;
     if (uptr->hwmark && ((uptr->flags & UNIT_RO) == 0)) {
-        if (!sim_quiet) {
-            sim_printf ("%s: writing buffer to file\n", sim_dname (dptr));
-            }
+        sim_messagef (SCPE_OK, "%s: writing buffer to file\n", sim_dname (dptr));
         rewind (uptr->fileref);
         sim_fwrite (uptr->filebuf, SZ_D (dptr), cap, uptr->fileref);
         if (ferror (uptr->fileref))
@@ -6286,7 +6334,7 @@ GET_SWITCHES (cptr);                                    /* get switches */
 if (*cptr == 0)                                         /* must be more */
     return SCPE_2FARG;
 gbuf[sizeof(gbuf)-1] = '\0';
-strncpy (gbuf, cptr, sizeof(gbuf)-1);
+strlcpy (gbuf, cptr, sizeof(gbuf));
 sim_trim_endspc (gbuf);
 if ((sfile = sim_fopen (gbuf, "wb")) == NULL)
     return SCPE_OPENERR;
@@ -6441,7 +6489,7 @@ GET_SWITCHES (cptr);                                    /* get switches */
 if (*cptr == 0)                                         /* must be more */
     return SCPE_2FARG;
 gbuf[sizeof(gbuf)-1] = '\0';
-strncpy (gbuf, cptr, sizeof(gbuf)-1);
+strlcpy (gbuf, cptr, sizeof(gbuf));
 sim_trim_endspc (gbuf);
 if ((rfile = sim_fopen (gbuf, "rb")) == NULL)
     return SCPE_OPENERR;
@@ -6846,7 +6894,8 @@ if ((flag == RU_RUN) || (flag == RU_GO)) {              /* run or go */
                                              (flag == RU_RUN) ? "RUN" : "GO", gbuf, cptr);
         sim_switches = 0;
         GET_SWITCHES (cptr);
-        if ((*cptr == '\'') || (*cptr == '"')) {        /* Expect UNTIL condition */
+        if (((*cptr == '\'') || (*cptr == '"')) ||      /* Expect UNTIL condition */
+            (!sim_strncasecmp(cptr, "HALTAFTER=", 10))) {
             r = expect_cmd (1, cptr);
             if (r != SCPE_OK)
                 return r;
@@ -7981,7 +8030,7 @@ if (prompt) {                                           /* interactive? */
         if (tmpc == NULL)                               /* bad result? */
             cptr = NULL;
         else {
-            strncpy (cptr, tmpc, size);                 /* copy result */
+            strlcpy (cptr, tmpc, size);                 /* copy result */
             free (tmpc) ;                               /* free temp */
             }
         }
@@ -10156,7 +10205,7 @@ if ((act != NULL) && (*act != 0)) {                     /* new action? */
     char *newp = (char *) calloc (CBUFSIZE+1, sizeof (char)); /* alloc buf */
     if (newp == NULL)                                   /* mem err? */
         return SCPE_MEM;
-    strncpy (newp, act, CBUFSIZE);                      /* copy action */
+    strlcpy (newp, act, CBUFSIZE);                      /* copy action */
     bp->act = newp;                                     /* set pointer */
     }
 sim_brk_summ = sim_brk_summ | (sw & ~BRK_TYP_TEMP);
@@ -10384,7 +10433,7 @@ if ((ep = strchr (sim_brk_act[sim_do_depth], ';'))) {   /* cmd delimiter? */
     sim_brk_act[sim_do_depth] += lnt + 1;               /* adv ptr */
     }
 else {
-    strncpy (buf, sim_brk_act[sim_do_depth], size);     /* copy action */
+    strlcpy (buf, sim_brk_act[sim_do_depth], size);     /* copy action */
     sim_brk_clract ();                                  /* no more */
     }
 return buf;
@@ -10771,7 +10820,7 @@ return SCPE_OK;
 
 t_stat sim_exp_show_tab (FILE *st, const EXPECT *exp, const EXPTAB *ep)
 {
-const char *dev_name = dev_name = tmxr_expect_line_name (exp);
+const char *dev_name = tmxr_expect_line_name (exp);
 uint32 default_haltafter = get_default_env_parameter (dev_name, "SIM_EXPECT_HALTAFTER", 0);
 
 if (!ep)
@@ -10799,7 +10848,7 @@ return SCPE_OK;
 t_stat sim_exp_show (FILE *st, CONST EXPECT *exp, const char *match)
 {
 CONST EXPTAB *ep = (CONST EXPTAB *)sim_exp_fnd (exp, match, 0);
-const char *dev_name = dev_name = tmxr_expect_line_name (exp);
+const char *dev_name = tmxr_expect_line_name (exp);
 uint32 default_haltafter = get_default_env_parameter (dev_name, "SIM_EXPECT_HALTAFTER", 0);
 
 if (exp->buf_size) {
@@ -11357,6 +11406,8 @@ int32 len;
 va_list arglist;
 t_bool inhibit_message = (!sim_show_message || (stat & SCPE_NOMESSAGE));
 
+if ((stat == SCPE_OK) && (sim_quiet || (sim_switches & SWMASK ('Q'))))
+    return stat;
 while (1) {                                         /* format passed string, args */
     va_start (arglist, fmt);
 #if defined(NO_vsnprintf)
@@ -11383,10 +11434,11 @@ while (1) {                                         /* format passed string, arg
     break;
     }
 
-if ((sim_do_ocptr[sim_do_depth]) &&
-    ((stat & ~SCPE_NOMESSAGE) != SCPE_OK)) {
-    if (!sim_do_echo && !sim_quiet && !inhibit_message)
+if (sim_do_ocptr[sim_do_depth]) {
+    if (!sim_do_echo && !inhibit_message && !sim_cmd_echoed) {
         sim_printf("%s> %s\n", do_position(), sim_do_ocptr[sim_do_depth]);
+        sim_cmd_echoed = TRUE;
+        }
     else {
         if (sim_deb) {                      /* Always put context in debug output */
             TMLN *saved_oline = sim_oline;
@@ -12461,7 +12513,7 @@ if (fp == NULL) {
          * of the executable.  Failing that, we're out of luck.
          */
         fbuf[sizeof(fbuf)-1] = '\0';
-        strncpy (fbuf, sim_argv[0], sizeof (fbuf)-1);
+        strlcpy (fbuf, sim_argv[0], sizeof (fbuf));
         if ((p = (char *)match_ext (fbuf, "EXE")))
             *p = '\0';
         if ((p = strrchr (fbuf, '\\'))) {
