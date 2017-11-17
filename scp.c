@@ -1081,10 +1081,11 @@ static const char simh_help[] =
 #define HLP_SET_CONSOLE "*Commands SET CONSOLE"
       "3Console\n"
       "+set console arg{,arg...}    set console options\n"
-      "+set console WRU             specify console drop to simh character\n"
-      "+set console BRK             specify console Break character\n"
-      "+set console DEL             specify console delete character\n"
-      "+set console PCHAR           specify console printable characters\n"
+      "+set console WRU=value       specify console drop to simh character\n"
+      "+set console BRK=value       specify console Break character\n"
+      "+set console DEL=value       specify console delete character\n"
+      "+set console PCHAR=bitmask   bit mask of printable characters in\n"
+      "++++++++                     range [31,0]\n"
       "+set console SPEED=speed{*factor}\n"
       "++++++++                     specify console input data rate\n"
       "+set console TELNET=port     specify console telnet port\n"
@@ -1788,7 +1789,8 @@ ASSERT      failure have several different actions:
       " Pause for NUMBER seconds.  SUFFIX may be 's' for seconds (the default),\n"
       " 'm' for minutes, 'h' for hours or 'd' for days.  NUMBER may be an\n"
       " arbitrary floating point number.  Given two or more arguments, pause\n"
-      " for the amount of time specified by the sum of their values.\n\n"
+      " for the amount of time specified by the sum of their values.\n"
+      " NOTE: A SLEEP command is interruptable with SIGINT (^C).\n\n"
       /***************** 80 character line width template *************************/
 #define HLP_ASSERT      "*Commands Executing_Command_Files Testing_Simulator_State"
 #define HLP_IF          "*Commands Executing_Command_Files Testing_Simulator_State"
@@ -3981,6 +3983,8 @@ t_stat sleep_cmd (int32 flag, CONST char *cptr)
 char *tptr;
 double wait;
 
+stop_cpu = 0;
+signal (SIGINT, int_handler);
 while (*cptr) {
     wait = strtod (cptr, &tptr);
     switch (*tptr) {
@@ -4008,15 +4012,18 @@ while (*cptr) {
             wait *= (24.0*60.0*60.0);
             break;
         default:
+            signal (SIGINT, SIG_DFL);                               /* cancel WRU */
             return sim_messagef (SCPE_ARG, "Invalid Sleep unit '%c'\n", *cptr);
         }
     wait *= 1000.0;                             /* Convert to Milliseconds */
     cptr = tptr;
-    while (wait > 1000.0)
+    while ((wait > 1000.0) && (!stop_cpu))
         wait -= sim_os_ms_sleep (1000);
-    if (wait > 0.0)
+    if ((wait > 0.0) && (!stop_cpu))
         sim_os_ms_sleep ((unsigned)wait);
     }
+signal (SIGINT, SIG_DFL);                               /* cancel WRU */
+stop_cpu = 0;
 return SCPE_OK;
 }
 

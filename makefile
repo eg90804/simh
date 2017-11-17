@@ -883,11 +883,11 @@ else
     $(info .)
   else
     # Version check on windows-build
-    WINDOWS_BUILD = $(shell findstr WINDOWS-BUILD ..\windows-build\Windows-Build_Versions.txt)
+    WINDOWS_BUILD = $(word 2,$(shell findstr WINDOWS-BUILD ..\windows-build\Windows-Build_Versions.txt))
     ifeq (,$(WINDOWS_BUILD))
       WINDOWS_BUILD = 00000000
     endif
-    ifneq (,$(shell if 20150412 GTR $(WINDOWS_BUILD) echo old-windows-build))
+    ifneq (,$(or $(shell if 20150412 GTR $(WINDOWS_BUILD) echo old-windows-build),$(and $(shell if 20171112 GTR $(WINDOWS_BUILD) echo old-windows-build),$(findstring pthreadGC2,$(PTHREADS_LDFLAGS)))))
       $(info .)
       $(info windows-build components at: $(abspath ..\windows-build))
       $(info .)
@@ -912,6 +912,9 @@ else
       NETWORK_OPT += -Islirp -Islirp_glue -Islirp_glue/qemu -DHAVE_SLIRP_NETWORK -DUSE_SIMH_SLIRP_DEBUG slirp/*.c slirp_glue/*.c -lIphlpapi
       NETWORK_LAN_FEATURES += NAT(SLiRP)
     endif
+  endif
+  ifneq (,$(call find_include,ddk/ntdddisk))
+    CFLAGS_I = -DHAVE_NTDDDISK_H
   endif
 endif # Win32 (via MinGW)
 ifneq (,$(GIT_COMMIT_ID))
@@ -1013,7 +1016,7 @@ ifneq ($(DONT_USE_READER_THREAD),)
 endif
 
 CC_OUTSPEC = -o $@
-CC := $(GCC) $(CC_STD) -U__STRICT_ANSI__ $(CFLAGS_G) $(CFLAGS_O) $(CFLAGS_GIT) -DSIM_COMPILER="$(COMPILER_NAME)" -I . $(OS_CCDEFS) $(ROMS_OPT)
+CC := $(GCC) $(CC_STD) -U__STRICT_ANSI__ $(CFLAGS_G) $(CFLAGS_O) $(CFLAGS_GIT) $(CFLAGS_I) -DSIM_COMPILER="$(COMPILER_NAME)" -I . $(OS_CCDEFS) $(ROMS_OPT)
 LDFLAGS := $(OS_LDFLAGS) $(NETWORK_LDFLAGS) $(LDFLAGS_O)
 
 #
