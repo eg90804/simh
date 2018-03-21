@@ -5148,7 +5148,9 @@ if (flag) {
 #endif
     fprintf (st, "\n        Simulator Compiled as %s%s%s on %s at %s", cpp, arch, build, __DATE__, __TIME__);
 #endif
+#if defined(USE_SIM_VIDEO)
     fprintf (st, "\n\t\tSDL Video support: %s", vid_version());
+#endif
     fprintf (st, "\n        Memory Access: %s Endian", sim_end ? "Little" : "Big");
     fprintf (st, "\n        Memory Pointer Size: %d bits", (int)sizeof(dptr)*8);
     fprintf (st, "\n        %s", sim_toffset_64 ? "Large File (>2GB) support" : "No Large File support");

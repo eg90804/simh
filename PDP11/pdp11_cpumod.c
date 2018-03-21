@@ -315,7 +315,7 @@ t_stat SR_rd (int32 *data, int32 pa, int32 access)
 extern volatile int32 stop_cpu;
 if (oc_active) {
     /* System III & V do apparently perform a lot of SWR reads! */
-    if (!ocp->sir))	/* only when running interactive */
+    if (!ocp->sir)	/* only when running interactive */
         oc_get_SWR();
     SR = oc_get_DTA();	/* get data from switch position fields */
     }
