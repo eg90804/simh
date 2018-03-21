@@ -1,7 +1,10 @@
-# SIMH v4.0 - Beta                   [![Coverity Scan Build Status](https://scan.coverity.com/projects/11982/badge.svg)](https://scan.coverity.com/projects/simh)
+# SIMH v4.0 - Current
+
+[![Coverity Scan Build Status](https://scan.coverity.com/projects/11982/badge.svg)](https://scan.coverity.com/projects/simh)
+[![Build Status](https://travis-ci.org/simh/simh.svg)](https://travis-ci.org/simh/simh)
 
 ## Table of Contents:
-[WHAT'S NEW](#whats-new)  
+[WHAT'S NEW since simh v3.9](#whats-new-since-simh-v39)  
 . . [New Simulators](#new-simulators)  
 . . [Simulator Front Panel API](#simulator-front-panel-api)  
 . . [New Functionality](#new-functionality)  
@@ -39,7 +42,7 @@
 . . . . . . [VMS](#vms)  
 . . [Problem Reports](#problem-reports)  
 
-## WHAT'S NEW
+## WHAT'S NEW since simh v3.9
 
 ### New Simulators
 
