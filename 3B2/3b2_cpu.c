@@ -147,11 +147,13 @@ MTAB cpu_mod[] = {
       &cpu_set_size, NULL, NULL, "Set Memory to 4M bytes" },
     { MTAB_XTD|MTAB_VDV|MTAB_NMO|MTAB_SHP, 0, "HISTORY", "HISTORY",
       &cpu_set_hist, &cpu_show_hist, NULL, "Displays instruction history" },
+    { MTAB_XTD|MTAB_VDV|MTAB_NMO|MTAB_SHP, 0, "STACK", "STACK",
+      NULL, &cpu_show_stack, NULL, "Display the current stack with optional depth" },
     { MTAB_XTD|MTAB_VDV, 0, "IDLE", "IDLE", &sim_set_idle, &sim_show_idle },
     { MTAB_XTD|MTAB_VDV, 0, NULL, "NOIDLE", &sim_clr_idle, NULL },
-    { UNIT_EXHALT, UNIT_EXHALT, "Halt on Exception", "EX_HALT",
+    { UNIT_EXHALT, UNIT_EXHALT, "Halt on Exception", "EXHALT",
       NULL, NULL, NULL, "Enables Halt on exceptions and traps" },
-    { UNIT_EXHALT, 0, "No halt on exception", "NOEX_HALT",
+    { UNIT_EXHALT, 0, "No halt on exception", "NOEXHALT",
       NULL, NULL, NULL, "Disables Halt on exceptions and traps" },
     { 0 }
 };
@@ -492,6 +494,41 @@ const uint32 shift_32_table[65] =
     0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff,
     0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff
 };
+
+t_stat cpu_show_stack(FILE *st, UNIT *uptr, int32 val, CONST void *desc)
+{
+    uint32 i, j;
+    uint32 addr, v, count;
+    uint8 tmp;
+    char *cptr = (char *) desc;
+    t_stat result;
+
+    if (cptr) {
+        count = (size_t) get_uint(cptr, 10, 128, &result);
+        if ((result != SCPE_OK) || (count == 0)) {
+            return SCPE_ARG;
+        }
+    } else {
+        count = 8;
+    }
+
+    for (i = 0; i < (count * 4); i += 4) {
+        v = 0;
+        addr = R[NUM_SP] - i;
+
+        for (j = 0; j < 4; j++) {
+            result = examine(addr + j, &tmp);
+            if (result != SCPE_OK) {
+                return result;
+            }
+            v |= (uint32) tmp << ((3 - j) * 8);
+        }
+
+        fprintf(st, "  %08x: %08x\n", addr, v);
+    }
+
+    return SCPE_OK;
+}
 
 void cpu_load_rom()
 {
@@ -2245,9 +2282,8 @@ t_stat sim_instr(void)
             break;
         case GATE:
             cpu_km = TRUE;
-            abort_context = C_PROCESS_GATE_PCB;
             if (R[NUM_SP] < read_w(R[NUM_PCBP] + 12, ACC_AF) ||
-                R[NUM_SP] >= read_w(R[NUM_PCBP] + 16, ACC_AF)) {
+                R[NUM_SP] > read_w(R[NUM_PCBP] + 16, ACC_AF)) {
                 sim_debug(EXECUTE_MSG, &cpu_dev,
                           "[%08x] STACK OUT OF BOUNDS IN GATE. "
                           "SP=%08x, R[NUM_PCBP]+12=%08x, "
@@ -2675,7 +2711,6 @@ t_stat sim_instr(void)
         case SPOPWT:
             /* Memory fault is signaled when no support processor is
                active */
-            csr_data |= CSRTIMO;
             cpu_abort(NORMAL_EXCEPTION, EXTERNAL_MEMORY_FAULT);
             break;
         case SUBW2:
@@ -2909,12 +2944,9 @@ static SIM_INLINE void cpu_on_normal_exception(uint8 isc)
               "[%08x] [cpu_on_normal_exception %d] %%sp=%08x abort_context=%d\n",
               R[NUM_PC], isc, R[NUM_SP], abort_context);
 
-    abort_context = C_PROCESS_GATE_PCB;
-
     cpu_km = TRUE;
-
     if (R[NUM_SP] < read_w(R[NUM_PCBP] + 12, ACC_AF) ||
-        R[NUM_SP] >= read_w(R[NUM_PCBP] + 16, ACC_AF)) {
+        R[NUM_SP] > read_w(R[NUM_PCBP] + 16, ACC_AF)) {
         sim_debug(EXECUTE_MSG, &cpu_dev,
                   "[%08x] STACK OUT OF BOUNDS IN EXCEPTION HANDLER. "
                   "SP=%08x, R[NUM_PCBP]+12=%08x, "
@@ -2923,10 +2955,8 @@ static SIM_INLINE void cpu_on_normal_exception(uint8 isc)
                   R[NUM_SP],
                   read_w(R[NUM_PCBP] + 12, ACC_AF),
                   read_w(R[NUM_PCBP] + 16, ACC_AF));
-        abort_context = C_NONE;
         cpu_abort(STACK_EXCEPTION, STACK_BOUND);
     }
-
     cpu_km = FALSE;
 
     /* Set context for STACK (FAULT) */
@@ -3251,16 +3281,10 @@ static void cpu_write_op(operand * op, t_uint64 val)
         break;
     case HW:
     case UH:
-        if (val > HALF_MASK) {
-            cpu_set_v_flag(TRUE);
-        }
         write_h(eff, val & HALF_MASK);
         break;
     case SB:
     case BT:
-        if (val > BYTE_MASK) {
-            cpu_set_v_flag(TRUE);
-        }
         write_b(eff, val & BYTE_MASK);
         break;
     default:
