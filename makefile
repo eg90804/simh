@@ -201,15 +201,15 @@ ifeq ($(WIN32),)  #*nix Environments (&& cygwin)
     endif
     ifeq (need-hooks,$(NEED_HOOKS))
       $(info *** Installing git hooks in local repository ***)
-      GIT_HOOKS += $(shell /bin/cp './Visual Studio Projects/git-hooks/post-commit' ./.git/hooks/)
-      GIT_HOOKS += $(shell /bin/cp './Visual Studio Projects/git-hooks/post-checkout' ./.git/hooks/)
-      GIT_HOOKS += $(shell /bin/cp './Visual Studio Projects/git-hooks/post-merge' ./.git/hooks/)
+      GIT_HOOKS += $(shell cp './Visual Studio Projects/git-hooks/post-commit' ./.git/hooks/)
+      GIT_HOOKS += $(shell cp './Visual Studio Projects/git-hooks/post-checkout' ./.git/hooks/)
+      GIT_HOOKS += $(shell cp './Visual Studio Projects/git-hooks/post-merge' ./.git/hooks/)
       GIT_HOOKS += $(shell ./.git/hooks/post-checkout)
       ifneq (,$(strip $(GIT_HOOKS)))
         $(info *** Warning - Error installing git hooks *** $(GIT_HOOKS))
       else
         ifneq (commit-id-exists,$(shell if $(TEST) -e .git-commit-id; then echo commit-id-exists; fi))
-          $(shell /bin/rm .git-commit-id)
+          $(shell rm .git-commit-id)
         endif
       endif
     endif
@@ -230,9 +230,12 @@ ifeq ($(WIN32),)  #*nix Environments (&& cygwin)
       OS_CCDEFS += -DSIM_ASYNCH_IO 
     endif
     OS_LDFLAGS = -lm
-  else # Non-Android Builds
+  else # Non-Android (or Native Android) Builds
     ifeq (,$(INCLUDES)$(LIBRARIES))
-      INCPATH:=/usr/include
+      INCPATH:=$(shell LANG=C; $(GCC) -x c -v -E /dev/null 2>&1 | grep -A 10 '> search starts here' | grep '^ ' | tr -d '\n')
+      ifeq (,$(INCPATH))
+        INCPATH:=/usr/include
+      endif
       LIBPATH:=/usr/lib
     else
       $(info *** Warning ***)
@@ -284,8 +287,19 @@ ifeq ($(WIN32),)  #*nix Environments (&& cygwin)
       endif
     else
       ifeq (Linux,$(OSTYPE))
+        ifeq (Android,$(shell uname -o))
+          OS_CCDEFS += -D__ANDROID_API__=$(shell getprop ro.build.version.sdk) -DSIM_BUILD_OS=" On Android Version $(shell getprop ro.build.version.release)"
+        endif
         ifneq (lib,$(findstring lib,$(UNSUPPORTED_BUILD)))
-          LIBPATH := $(sort $(foreach lib,$(shell /sbin/ldconfig -p | grep ' => /' | sed 's/^.* => //'),$(dir $(lib))))
+          ifeq (Android,$(shell uname -o))
+            ifneq (,$(shell if $(TEST) -d /system/lib; then echo systemlib; fi))
+              LIBPATH += /system/lib
+            endif
+            LIBPATH += $(LD_LIBRARY_PATH)
+          endif
+          ifeq (ldconfig,$(shell if $(TEST) -e /sbin/ldconfig; then echo ldconfig; fi))
+            LIBPATH := $(sort $(foreach lib,$(shell /sbin/ldconfig -p | grep ' => /' | sed 's/^.* => //'),$(dir $(lib))))
+          endif
         endif
         LIBEXT = so
       else
@@ -477,6 +491,9 @@ ifeq ($(WIN32),)  #*nix Environments (&& cygwin)
     ifneq (,$(call find_lib,ncurses))
       OS_CURSES_DEFS += -DHAVE_NCURSES -lncurses
     endif
+  endif
+  ifneq (,$(call find_include,semaphore))
+    OS_CCDEFS += -DHAVE_SEMAPHORE
   endif
   ifneq (,$(call find_include,dlfcn))
     ifneq (,$(call find_lib,dl))
@@ -993,7 +1010,7 @@ else
   endif
 endif # Win32 (via MinGW)
 ifneq (,$(GIT_COMMIT_ID))
-  CFLAGS_GIT = -DSIM_GIT_COMMIT_ID=$(GIT_COMMIT_ID) -DSIM_GIT_COMMIT_TIME=$(GIT_COMMIT_TIME)
+  CFLAGS_GIT = -DSIM_GIT_COMMIT_ID=$(GIT_COMMIT_ID)
 endif
 ifneq (,$(GIT_COMMIT_TIME))
   CFLAGS_GIT += -DSIM_GIT_COMMIT_TIME=$(GIT_COMMIT_TIME)

@@ -254,6 +254,9 @@
 #ifndef MAX
 #define MAX(a,b)  (((a) >= (b)) ? (a) : (b))
 #endif
+#ifndef MIN
+#define MIN(a,b)  (((a) <= (b)) ? (a) : (b))
+#endif
 
 /* search logical and boolean ops */
 
@@ -3311,7 +3314,7 @@ strlcpy (abuf, fcptr, sizeof(abuf));
 c = abuf;
 do_arg[10] = NULL;                                      /* make sure the argument list always ends with a NULL */
 for (nargs = 0; nargs < 10; ) {                         /* extract arguments */
-    while (sim_isspace (*c))                                /* skip blanks */
+    while (sim_isspace (*c))                            /* skip blanks */
         c++;
     if (*c == 0)                                        /* all done? */
         do_arg [nargs++] = NULL;                        /* null argument */
@@ -5341,7 +5344,15 @@ if (flag) {
 #else
     cpp = "C";
 #endif
+#if !defined (SIM_BUILD_OS)
     fprintf (st, "\n        Simulator Compiled as %s%s%s on %s at %s", cpp, arch, build, __DATE__, __TIME__);
+#else
+#define S_xstr(a) S_str(a)
+#define S_str(a) #a
+    fprintf (st, "\n        Simulator Compiled as %s%s%s on %s at %s %s", cpp, arch, build, __DATE__, __TIME__, S_xstr(SIM_BUILD_OS));
+#undef S_str
+#undef S_xstr
+#endif
 #endif
 #if defined(USE_SIM_VIDEO)
     fprintf (st, "\n\t\tSDL Video support: %s", vid_version());
@@ -5803,45 +5814,36 @@ t_stat pwd_cmd (int32 flg, CONST char *cptr)
 return show_cmd (0, "DEFAULT");
 }
 
-typedef void (*DIR_ENTRY_CALLBACK)(const char *directory, 
-                                   const char *filename,
-                                   t_offset FileSize,
-                                   const struct stat *filestat,
-                                   void *context);
-
 #if defined (_WIN32)
 
-static t_stat sim_dir_scan (const char *cptr, DIR_ENTRY_CALLBACK entry, void *context)
+t_stat sim_dir_scan (const char *cptr, DIR_ENTRY_CALLBACK entry, void *context)
 {
 HANDLE hFind;
 WIN32_FIND_DATAA File;
 struct stat filestat;
 char WildName[PATH_MAX + 1];
 
-if ((!stat (cptr, &filestat)) && (filestat.st_mode & S_IFDIR)) {
-    sprintf (WildName, "%s%c*", cptr, strchr (cptr, '/') ? '/' : '\\');
-    cptr = WildName;
-    }
+strlcpy (WildName, cptr, sizeof(WildName));
+cptr = WildName;
+sim_trim_endspc (WildName);
 if ((hFind =  FindFirstFileA (cptr, &File)) != INVALID_HANDLE_VALUE) {
     t_int64 FileSize;
     char DirName[PATH_MAX + 1], FileName[PATH_MAX + 1];
-    const char *c;
-    char pathsep = '/';
+    char *c;
+    const char *backslash = strchr (cptr, '\\');
+    const char *slash = strchr (cptr, '/');
+    const char *pathsep = (backslash && slash) ? MIN (backslash, slash) : (backslash ? backslash : slash);
 
     GetFullPathNameA(cptr, sizeof(DirName), DirName, (char **)&c);
-    c = strrchr(DirName, pathsep);
-    if (NULL == c) {
-        pathsep = '\\';
-        c = strrchr(cptr, pathsep);
+    c = strrchr (DirName, '\\');
+    *c = '\0';                                  /* Truncate to just directory path */
+    if (!pathsep || (!strcmp (slash, "/*")))    /* Separator wasn't mentioned? */
+        pathsep = "\\";                         /* Default to Windows backslash */
+    if (*pathsep == '/') {                      /* If slash separator? */
+        while ((c = strchr (DirName, '\\')))
+            *c = '/';                           /* Convert backslash to slash */
         }
-    if (c) {
-        memcpy(DirName, cptr, c - cptr);
-        DirName[c - cptr] = '\0';
-        }
-    else {
-        getcwd(DirName, PATH_MAX);
-        }
-    sprintf (&DirName[strlen (DirName)], "%c", pathsep);
+    sprintf (&DirName[strlen (DirName)], "%c", *pathsep);
     do {
         FileSize = (((t_int64)(File.nFileSizeHigh)) << 32) | File.nFileSizeLow;
         sprintf (FileName, "%s%s", DirName, File.cFileName);
@@ -5866,7 +5868,7 @@ return SCPE_OK;
 #endif
 #endif /* defined (HAVE_GLOB) */
 
-static t_stat sim_dir_scan (const char *cptr, DIR_ENTRY_CALLBACK entry, void *context)
+t_stat sim_dir_scan (const char *cptr, DIR_ENTRY_CALLBACK entry, void *context)
 {
 #if defined (HAVE_GLOB)
 glob_t  paths;
@@ -5882,8 +5884,6 @@ memset (WholeName, 0, sizeof(WholeName));
 strlcpy (WildName, cptr, sizeof(WildName));
 cptr = WildName;
 sim_trim_endspc (WildName);
-if ((!stat (WildName, &filestat)) && (filestat.st_mode & S_IFDIR))
-    strlcat (WildName, "/*", sizeof (WildName));
 if ((*cptr != '/') || (0 == memcmp (cptr, "./", 2)) || (0 == memcmp (cptr, "../", 3))) {
 #if defined (VMS)
     getcwd (WholeName, sizeof (WholeName)-1, 0);
@@ -5948,10 +5948,11 @@ if (dir) {
         if (fnmatch(MatchName, ent->d_name, 0))
             continue;
 #else
+        /* only match exact name without fnmatch support */
         if (strcmp(MatchName, ent->d_name) != 0)
             continue;
 #endif
-        sprintf (FileName, "%s/%s", DirName, ent->d_name);
+        sprintf (FileName, "%s%s", DirName, ent->d_name);
 #endif
         p_name = FileName + strlen (DirName);
         memset (&filestat, 0, sizeof (filestat));
@@ -6039,16 +6040,27 @@ sim_printf (" %s\n", filename);
 t_stat dir_cmd (int32 flg, CONST char *cptr)
 {
 DIR_CTX dir_state;
-t_stat stat;
+t_stat r;
+char WildName[PATH_MAX + 1];
+
 
 memset (&dir_state, 0, sizeof (dir_state));
+strlcpy (WildName, cptr, sizeof(WildName));
+cptr = WildName;
+sim_trim_endspc (WildName);
 if (*cptr == '\0')
     cptr = "./*";
-stat = sim_dir_scan (cptr, sim_dir_entry, &dir_state);
+else {
+    struct stat filestat;
+
+    if ((!stat (WildName, &filestat)) && (filestat.st_mode & S_IFDIR))
+        strlcat (WildName, "/*", sizeof (WildName));
+    }
+r = sim_dir_scan (cptr, sim_dir_entry, &dir_state);
 sim_dir_entry (NULL, NULL, 0, NULL, &dir_state);    /* output summary */
-if (stat != SCPE_OK)
+if (r != SCPE_OK)
     return sim_messagef (SCPE_ARG, "File Not Found\n");
-return stat;
+return r;
 }
 
 
@@ -7548,22 +7560,26 @@ for (i = 1; (dptr = sim_devices[i]) != NULL; i++) {     /* reposition all */
         }
     }
 if ((r = sim_ttrun ()) != SCPE_OK) {                    /* set console mode */
+    r = sim_messagef (SCPE_TTYERR, "sim_ttrun() returned: %s - errno: %d - %s\n", sim_error_text (r), errno, strerror (errno));
     sim_ttcmd ();
-    return sim_messagef (SCPE_TTYERR, "sim_ttrun() returned: %s\n", sim_error_text (r));
+    return r;
     }
 if ((r = sim_check_console (30)) != SCPE_OK) {          /* check console, error? */
+    r = sim_messagef (r, "sim_check_console () returned: %s - errno: %d - %s\n", sim_error_text (r), errno, strerror (errno));
     sim_ttcmd ();
-    sim_messagef (r, "sim_check_console () returned: %s\n", sim_error_text (r));
+    return r;
     }
 #ifdef SIGHUP
 if (signal (SIGHUP, int_handler) == SIG_ERR) {          /* set WRU */
+    r = sim_messagef (SCPE_SIGERR, "Can't establish SIGHUP: errno: %d - %s", errno, strerror (errno));
     sim_ttcmd ();
-    return sim_messagef (SCPE_SIGERR, "Can't establish SIGHUP");
+    return r;
     }
 #endif
 if (signal (SIGTERM, int_handler) == SIG_ERR) {         /* set WRU */
+    r = sim_messagef (SCPE_SIGERR, "Can't establish SIGTERM: errno: %d - %s", errno, strerror (errno));
     sim_ttcmd ();
-    return sim_messagef (SCPE_SIGERR, "Can't establish SIGTERM");
+    return r;
     }
 stop_cpu = FALSE;
 sim_is_running = TRUE;                                  /* flag running */
@@ -8596,6 +8612,7 @@ if (0 == memcmp (cptr, "\xEF\xBB\xBF", 3))              /* Skip/ignore UTF8_BOM 
     memmove (cptr, cptr + 3, strlen (cptr + 3));
 while (sim_isspace (*cptr))                             /* trim leading spc */
     cptr++;
+sim_trim_endspc (cptr);                                 /* trim trailing spc */
 if ((*cptr == ';') || (*cptr == '#')) {                 /* ignore comment */
     if (sim_do_echo)                                    /* echo comments if -v */
         sim_printf("%s> %s\n", do_position(), cptr);
@@ -13868,6 +13885,7 @@ while (!isempty_Stack(stack2)) {
 
         if (!pop_Stack (stack1, item1, &op1)) {
             *stat = SCPE_INVEXPR;
+            delete_Stack (stack2);
             return 0;
             }
         if (temp_op->unary)

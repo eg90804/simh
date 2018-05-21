@@ -1528,6 +1528,8 @@ switch (DK_GET_FMT (uptr)) {                            /* case on format */
             sim_disk_set_fmt (uptr, 0, "VHD", NULL);    /* set file format to VHD */
             sim_vhd_disk_close (uptr->fileref);         /* close vhd file*/
             uptr->fileref = NULL;
+            open_function = sim_vhd_disk_open;
+            size_function = sim_vhd_disk_size;
             break;
             }
         if (NULL != (uptr->fileref = sim_os_disk_open_raw (cptr, "rb"))) {
@@ -2332,7 +2334,7 @@ Handle = CreateFileA (tmpname, DesiredAccess, FILE_SHARE_READ|FILE_SHARE_WRITE, 
 free (tmpname);
 if (Handle != INVALID_HANDLE_VALUE) {
     if ((sim_os_disk_info_raw ((FILE *)Handle, NULL, NULL, &is_cdrom)) || 
-        (DesiredAccess & GENERIC_WRITE) && is_cdrom) {
+        ((DesiredAccess & GENERIC_WRITE) && is_cdrom)) {
         CloseHandle (Handle);
         errno = EACCES;
         return NULL;
