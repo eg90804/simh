@@ -239,10 +239,12 @@ typedef unsigned long           t_uint64;
 typedef t_int64         t_svalue;                       /* signed value */
 typedef t_uint64        t_value;                        /* value */
 #define T_VALUE_MAX     0xffffffffffffffffuLL
+#define T_SVALUE_MAX    0x7fffffffffffffffLL
 #else                                                   /* 32b data */
 typedef int32           t_svalue;
 typedef uint32          t_value;
 #define T_VALUE_MAX     0xffffffffUL
+#define T_SVALUE_MAX    0x7fffffffL
 #endif                                                  /* end 64b data */
 
 #if defined (USE_INT64) && defined (USE_ADDR64)         /* 64b address */
@@ -849,6 +851,8 @@ struct DEBTAB {
 #define SIM_DBG_AIO_QUEUE   0x040000        /* asynch event queue activities */
 #define SIM_DBG_EXP_STACK   0x080000        /* expression stack activities */
 #define SIM_DBG_EXP_EVAL    0x100000        /* expression evaluation activities */
+#define SIM_DBG_BRK_ACTION  0x200000        /* action activities */
+#define SIM_DBG_DO          0x400000        /* do activities */
 
 /* Open File Reference */
 struct FILEREF {
