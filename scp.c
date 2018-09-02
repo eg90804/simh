@@ -597,6 +597,11 @@ static char *sim_on_actions[MAX_DO_NEST_LVL+1][SCPE_MAX_ERR+2];
 static char sim_do_filename[MAX_DO_NEST_LVL+1][CBUFSIZE];
 static const char *sim_do_ocptr[MAX_DO_NEST_LVL+1];
 static const char *sim_do_label[MAX_DO_NEST_LVL+1];
+static t_bool sim_if_cmd[MAX_DO_NEST_LVL+1];
+static t_bool sim_if_cmd_last[MAX_DO_NEST_LVL+1];
+static t_bool sim_if_result[MAX_DO_NEST_LVL+1];
+static t_bool sim_if_result_last[MAX_DO_NEST_LVL+1];
+static t_bool sim_cptr_is_action[MAX_DO_NEST_LVL+1];
 
 t_stat sim_last_cmd_stat;                               /* Command Status */
 struct timespec cmd_time;                               /*  */
@@ -1220,8 +1225,8 @@ static const char simh_help[] =
       " The -D switch causes data blob output to also display the data as\n"
       " RADIX-50 characters.\n"
       "5-F\n"
-      " The -F switch causes duplicate successive lines of debug to be\n"
-      " summarized to reduce noise from the debug data stream.\n"
+      " The -F switch causes duplicate successive lines of debug NOT to be\n"
+      " summarized to reduce repetative noise from the debug data stream.\n"
       "5-E\n"
       " The -E switch causes data blob output to also display the data as\n"
       " EBCDIC characters.\n"
@@ -2036,6 +2041,8 @@ static const char simh_help[] =
       "++;\n"
       "++IF EXIST \"os.disk\" echo os.disk exists\n"
       "++IF NOT EXIST os.disk echo os.disk not existing\n"
+      "++IF EXIST \"os.disk\" echo os.disk exists\n"
+      "++ELSE                 echo os.disk not existing\n"
       "++ATTACH DS0 os.disk\n"
       "++BOOT DS\n"
       "++; A register contains error code; 0 = good boot\n"
@@ -2048,10 +2055,11 @@ static const char simh_help[] =
       " be echoed, the command file will be aborted with an \"Assertion failed\"\n"
       " message.  Otherwise, the command file will continue to bring up the\n"
       " operating system.\n"
-      "4IF\n"
+      "4IF-ELSE\n"
       " The IF command tests a simulator state condition and executes additional\n"
       " commands if the condition is true:\n\n"
-      "++IF <Conditional Expressions> commandtoprocess{; additionalcommandtoprocess}...\n\n"
+      "++IF <Conditional Expressions> commandtoprocess{; additionalcommandtoprocess}...\n"
+      "++{ELSE commandtoprocess{; additionalcommandtoprocess}...}\n\n"
       "5Examples:\n"
       " A command file might be used to bootstrap an operating system that\n"
       " halts after the initial load from disk.  The ASSERT command is then\n"
@@ -2240,6 +2248,7 @@ static CTAB cmd_table[] = {
     { "CALL",       &call_cmd,      0,          HLP_CALL },
     { "ON",         &on_cmd,        0,          HLP_ON },
     { "IF",         &assert_cmd,    0,          HLP_IF },
+    { "ELSE",       &assert_cmd,    2,          HLP_IF },
     { "PROCEED",    &noop_cmd,      0,          HLP_PROCEED },
     { "IGNORE",     &noop_cmd,      0,          HLP_IGNORE },
     { "ECHO",       &echo_cmd,      0,          HLP_ECHO },
@@ -2417,6 +2426,7 @@ for (i = 1; i < argc; i++) {                            /* loop thru args */
     if ((*argv[i] == '-') && lookswitch) {              /* switch? */
         if (get_switches (argv[i], &sw, NULL) == SW_ERROR) {
             fprintf (stderr, "Invalid switch %s\n", argv[i]);
+            free (targv);
             return 0;
             }
         sim_switches = sim_switches | sw;
@@ -2424,6 +2434,7 @@ for (i = 1; i < argc; i++) {                            /* loop thru args */
     else {
         if ((strlen (argv[i]) + strlen (cbuf) + 3) >= sizeof(cbuf)) {
             fprintf (stderr, "Argument string too long\n");
+            free (targv);
             return 0;
             }
         if (*cbuf)                                      /* concat args */
@@ -2589,6 +2600,7 @@ while (stat != SCPE_EXIT) {                             /* in case exit */
     if ((cptr = sim_brk_getact (cbuf, sizeof(cbuf)))) { /* pending action? */
         if (sim_do_echo)
             printf ("%s+ %s\n", sim_prompt, cptr);      /* echo */
+        sim_cptr_is_action[sim_do_depth] = TRUE;
         }
     else {
         if (sim_vm_read != NULL) {                      /* sim routine? */
@@ -2601,6 +2613,7 @@ while (stat != SCPE_EXIT) {                             /* in case exit */
 #else
             cptr = read_line_p (sim_prompt, cbuf, sizeof(cbuf), stdin);/* read with prmopt*/
 #endif
+        sim_cptr_is_action[sim_do_depth] = FALSE;
         }
     if (cptr == NULL) {                                 /* EOF? or SIGINT? */
         if (sim_ttisatty()) {
@@ -2618,6 +2631,11 @@ while (stat != SCPE_EXIT) {                             /* in case exit */
         fprintf (sim_log, "%s%s\n", sim_prompt, cptr);
     if (sim_deb && (sim_deb != sim_log) && (sim_deb != stdout))
         fprintf (sim_deb, "%s%s\n", sim_prompt, cptr);
+    if (!sim_cptr_is_action[sim_do_depth]) {
+        sim_if_cmd_last[sim_do_depth] = sim_if_cmd[sim_do_depth];
+        sim_if_result_last[sim_do_depth] = sim_if_result[sim_do_depth];
+        sim_if_result[sim_do_depth] = sim_if_cmd[sim_do_depth] = FALSE;
+        }
     cptr = get_glyph_cmd (cptr, gbuf);                  /* get command glyph */
     sim_switches = 0;                                   /* init switches */
     if ((cmdp = find_cmd (gbuf)))                       /* lookup command */
@@ -3489,7 +3507,10 @@ do {
     if (!sim_do_ocptr[sim_do_depth]) {                  /* no pending action? */
         sim_do_ocptr[sim_do_depth] = cptr = read_line (cbuf, sizeof(cbuf), fpin);/* get cmd line */
         sim_goto_line[sim_do_depth] += 1;
+        sim_cptr_is_action[sim_do_depth] = FALSE;
         }
+    else
+        sim_cptr_is_action[sim_do_depth] = TRUE;
     if (cptr == NULL) {                                 /* EOF? */
         stat = SCPE_OK;                                 /* set good return */
         break;
@@ -3508,6 +3529,11 @@ do {
     sim_switches = 0;                                   /* init switches */
     sim_gotofile = fpin;
     sim_do_echo = echo;
+    if (!sim_cptr_is_action[sim_do_depth]) {
+        sim_if_cmd_last[sim_do_depth] = sim_if_cmd[sim_do_depth];
+        sim_if_result_last[sim_do_depth] = sim_if_result[sim_do_depth];
+        sim_if_result[sim_do_depth] = sim_if_cmd[sim_do_depth] = FALSE;
+        }
     if ((cmdp = find_cmd (gbuf))) {                     /* lookup command */
         if (cmdp->action == &return_cmd)                /* RETURN command? */
             break;                                      /*    done! */
@@ -4245,6 +4271,17 @@ cptr = (CONST char *)get_sim_opt (CMD_OPT_SW|CMD_OPT_DFT, (CONST char *)cptr, &r
 sim_stabr.boolop = sim_staba.boolop = -1;               /* no relational op dflt */
 if (*cptr == 0)                                         /* must be more */
     return SCPE_2FARG;
+if ((flag != 1) && (sim_cptr_is_action[sim_do_depth]))
+    return sim_messagef (SCPE_UNK, "Invalid Command Sequence, IF/ELSE nesting not allowed\n");
+if (flag == 2) {                                        /* ELSE command? */
+    if (!sim_if_cmd_last[sim_do_depth])
+        return sim_messagef (SCPE_UNK, "Invalid Command Sequence, ELSE not following IF\n");
+    if (*cptr == '\0')                                  /* no more? */
+        return sim_messagef (SCPE_2FARG, "Missing ELSE action commands\n");
+    if (!sim_if_result_last[sim_do_depth])
+        sim_brk_setact (cptr);                          /* set up ELSE actions */
+    return SCPE_OK;
+    }
 tptr = get_glyph (cptr, gbuf, 0);                       /* get token */
 if (!strcmp (gbuf, "NOT")) {                            /* Conditional Inversion? */
     Not = TRUE;                                         /* remember that, and */
@@ -4299,12 +4336,12 @@ if (Exist || (*gbuf == '"') || (*gbuf == '\'')) {       /* quoted string compari
             ++cptr;
         cptr = _get_string (cptr, gbuf2, 0);            /* get second string */
         if (*cptr) {                                    /* more? */
-            if (flag)                                   /* ASSERT has no more args */
+            if (flag == 1)                              /* ASSERT has no more args */
                 return SCPE_2MARG;
             }
         else {
-            if (!flag)
-                return SCPE_2FARG;                      /* IF needs actions! */
+            if (flag != 1)
+                return SCPE_2FARG;                      /* IF/ELSE needs actions! */
             }
         result = sim_cmp_string (gbuf, gbuf2);
         result = ((result == optr->aval) || (result == optr->bval));
@@ -4313,6 +4350,7 @@ if (Exist || (*gbuf == '"') || (*gbuf == '\'')) {       /* quoted string compari
         }
     else {
         FILE *f = fopen (gbuf, "r");
+
         if (f)
             fclose (f);
         result = (f != NULL);
@@ -4388,13 +4426,18 @@ else {
     }
 if ((cptr > sim_sub_instr_buf) && ((size_t)(cptr - sim_sub_instr_buf) < sim_sub_instr_size))
     cptr = &sim_sub_instr[sim_sub_instr_off[cptr - sim_sub_instr_buf]]; /* get un-substituted string */
+sim_if_cmd[sim_do_depth] = (flag == 0);                 /* record IF command */
 if (Not ^ result) {
-    if (!flag)
+    if (!flag) {
         sim_brk_setact (cptr);                          /* set up IF actions */
+        sim_if_result[sim_do_depth] = TRUE;
+        }
     }
 else
     if (flag)
         return SCPE_AFAIL;                              /* return assert status */
+    else
+        sim_if_result[sim_do_depth] = FALSE;
 return SCPE_OK;
 }
 
@@ -10657,8 +10700,6 @@ do {
         }
     else {
         sim_debug (SIM_DBG_EVENT, sim_dflt_dev, "Processing Event for %s\n", sim_uname (uptr));
-        if (uptr->uname && ((*uptr->uname == '\0') || (*uptr->uname == ' ')))
-            reason = SCPE_OK;   /* do nothing breakpoint location */
         if (uptr->action != NULL)
             reason = uptr->action (uptr);
         else
@@ -10805,7 +10846,7 @@ return _sim_activate_after_abs (uptr, usec_delay);
 
 t_stat _sim_activate_after_abs (UNIT *uptr, double usec_delay)
 {
-AIO_VALIDATE;                   /* Can't call asynchronously */
+AIO_VALIDATE(uptr);             /* Can't call asynchronously */
 sim_cancel (uptr);
 return _sim_activate_after (uptr, usec_delay);
 }
@@ -10822,8 +10863,8 @@ return _sim_activate_after (uptr, usec_delay);
 
 t_stat _sim_activate_after (UNIT *uptr, double usec_delay)
 {
-AIO_VALIDATE;                   /* Can't call asynchronously */
-if (sim_is_active (uptr))                               /* already active? */
+AIO_VALIDATE(uptr);             /* Can't call asynchronously */
+if (sim_is_active (uptr))       /* already active? */
     return SCPE_OK;
 return sim_timer_activate_after (uptr, usec_delay);
 }
@@ -10841,7 +10882,7 @@ t_stat sim_cancel (UNIT *uptr)
 {
 UNIT *cptr, *nptr;
 
-AIO_VALIDATE;
+AIO_VALIDATE(uptr);
 if ((uptr->cancel) && uptr->cancel (uptr))
     return SCPE_OK;
 if (uptr->dynflags & UNIT_TMR_UNIT)
@@ -10896,7 +10937,7 @@ return SCPE_OK;
 
 t_bool sim_is_active (UNIT *uptr)
 {
-AIO_VALIDATE;
+AIO_VALIDATE(uptr);
 AIO_UPDATE_QUEUE;
 return (((uptr->next) || AIO_IS_ACTIVE(uptr) || ((uptr->dynflags & UNIT_TMR_UNIT) ? sim_timer_is_active (uptr) : FALSE)) ? TRUE : FALSE);
 }
@@ -10932,7 +10973,7 @@ int32 sim_activate_time (UNIT *uptr)
 {
 int32 accum;
 
-AIO_VALIDATE;
+AIO_VALIDATE(uptr);
 accum = _sim_timer_activate_time (uptr);
 if (accum >= 0)
     return accum;
@@ -10945,7 +10986,7 @@ UNIT *cptr;
 int32 accum;
 double result;
 
-AIO_VALIDATE;
+AIO_VALIDATE(uptr);
 result = sim_timer_activate_time_usecs (uptr);
 if (result >= 0)
     return result;
@@ -12241,7 +12282,7 @@ static void _sim_debug_write_flush (const char *buf, size_t len, t_bool flush)
 {
 char *eol;
 
-if (!(sim_deb_switches & SWMASK ('F'))) {           /* filtering disabled? */
+if (sim_deb_switches & SWMASK ('F')) {              /* filtering disabled? */
     if (len > 0)
         fwrite (buf, 1, len, sim_deb);              /* output now. */
     return;                                         /* done */
@@ -12308,7 +12349,7 @@ while ((eol = strchr (debug_line_buf, '\n')) || flush) {
             }
         }
     debug_line_offset -= linesize;
-    if (debug_line_offset > 0)
+    if ((debug_line_offset > 0) && (!flush))
         memmove (debug_line_buf, eol + 1, debug_line_offset);
     debug_line_buf[debug_line_offset] = '\0';
     }
@@ -14445,100 +14486,9 @@ return cptr;
 }
 
 /*
-   Compiled in unit tests for the various device oriented library 
-   modules: sim_card, sim_disk, sim_tape, sim_ether, sim_tmxr, etc.
+ * Compiled in unit tests for the various device oriented library 
+ * modules: sim_card, sim_disk, sim_tape, sim_ether, sim_tmxr, etc.
  */
-
-static t_stat create_card_file (const char *filename, int cards)
-{
-FILE *f;
-int i;
-
-f = fopen (filename, "w");
-if (f == NULL)
-    return SCPE_OPENERR;
-for (i=0; i<cards; i++)
-    fprintf (f, "%05d ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789\n", i);
-fclose (f);
-return SCPE_OK;
-}
-
-#define TST(_stat) do { if (SCPE_OK != (stat = (_stat))) {sim_printf ("Error: %d - '%s' processing: " #_stat "\n", stat, sim_error_text(stat)); goto done; }} while (0)
-
-static t_stat test_card (DEVICE *dptr)
-{
-t_stat stat = SCPE_OK;
-#if defined(USE_SIM_CARD) && defined(SIM_CARD_API)
-char cmd[CBUFSIZE];
-char saved_filename[4*CBUFSIZE];
-uint16 card_image[80];
-
-if ((dptr->units->flags & UNIT_RO) == 0)  /* Punch device? */
-    return SCPE_OK;
-
-sim_printf ("Testing %s device sim_card APIs\n", dptr->name);
-
-(void)remove("file1.deck");
-(void)remove("file2.deck");
-(void)remove("file3.deck");
-(void)remove("file4.deck");
-
-TST(create_card_file ("File10.deck", 10));
-TST(create_card_file ("File20.deck", 20));
-TST(create_card_file ("File30.deck", 30));
-TST(create_card_file ("File40.deck", 40));
-
-sprintf (cmd, "%s File10.deck", dptr->name);
-TST(attach_cmd (0, cmd));
-sprintf (cmd, "%s File20.deck", dptr->name);
-TST(attach_cmd (0, cmd));
-sprintf (cmd, "%s -S File30.deck", dptr->name);
-TST(attach_cmd (0, cmd));
-sprintf (cmd, "%s -S -E File40.deck", dptr->name);
-TST(attach_cmd (0, cmd));
-sprintf (saved_filename, "%s %s", dptr->name, dptr->units->filename);
-show_cmd (0, dptr->name);
-sim_printf ("Input Hopper Count:  %d\n", sim_card_input_hopper_count(dptr->units));
-sim_printf ("Output Hopper Count: %d\n", sim_card_output_hopper_count(dptr->units));
-while (!sim_card_eof (dptr->units))
-    TST(sim_read_card (dptr->units, card_image));
-sim_printf ("Input Hopper Count:  %d\n", sim_card_input_hopper_count(dptr->units));
-sim_printf ("Output Hopper Count: %d\n", sim_card_output_hopper_count(dptr->units));
-sim_printf ("Detaching %s\n", dptr->name);
-TST(detach_cmd (0, dptr->name));
-show_cmd (0, dptr->name);
-sim_printf ("Input Hopper Count:  %d\n", sim_card_input_hopper_count(dptr->units));
-sim_printf ("Output Hopper Count: %d\n", sim_card_output_hopper_count(dptr->units));
-sim_printf ("Attaching Saved Filenames: %s\n", saved_filename + strlen(dptr->name));
-TST(attach_cmd (0, saved_filename));
-show_cmd (0, dptr->name);
-sim_printf ("Input Hopper Count:  %d\n", sim_card_input_hopper_count(dptr->units));
-sim_printf ("Output Hopper Count: %d\n", sim_card_output_hopper_count(dptr->units));
-TST(detach_cmd (0, dptr->name));
-done:
-(void)remove ("file10.deck");
-(void)remove ("file20.deck");
-(void)remove ("file30.deck");
-(void)remove ("file40.deck");
-#endif /* defined(USE_SIM_CARD) && defined(SIM_CARD_API) */
-return stat;
-}
-
-static t_stat test_tape (DEVICE *dptr)
-{
-return SCPE_OK;
-}
-
-static t_stat test_disk (DEVICE *dptr)
-{
-return SCPE_OK;
-}
-
-static t_stat test_ether (DEVICE *dptr)
-{
-return SCPE_OK;
-}
-
 
 static t_stat sim_library_unit_tests (void)
 {
@@ -14547,17 +14497,24 @@ DEVICE *dptr;
 t_stat stat = SCPE_OK;
 
 for (i = 0; (dptr = sim_devices[i]) != NULL; i++) {
-    if (DEV_TYPE(dptr) == DEV_CARD)
-        stat = test_card (dptr);
-    else
-        if (DEV_TYPE(dptr) == DEV_TAPE)
-            stat = test_tape (dptr);
-        else
-            if (DEV_TYPE(dptr) == DEV_DISK)
-                stat = test_disk (dptr);
-        else
-            if (DEV_TYPE(dptr) == DEV_ETHER)
-                stat = test_ether (dptr);
+    switch (DEV_TYPE(dptr)) {
+#if defined(USE_SIM_CARD)
+        case DEV_CARD:
+            stat = sim_card_test (dptr);
+            break;
+#endif
+        case DEV_DISK:
+            stat = sim_disk_test (dptr);
+            break;
+        case DEV_ETHER:
+            stat = sim_ether_test (dptr);
+            break;
+        case DEV_TAPE:
+            stat = sim_tape_test (dptr);
+            break;
+        default:
+            break;
+        }
     }
 return stat;
 }

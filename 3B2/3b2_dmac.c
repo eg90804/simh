@@ -55,10 +55,18 @@ DEVICE dmac_dev = {
 dmac_dma_handler device_dma_handlers[] = {
     {DMA_ID_CHAN,  IDBASE+ID_DATA_REG,  &id_drq,         dmac_generic_dma, id_after_dma},
     {DMA_IF_CHAN,  IFBASE+IF_DATA_REG,  &if_state.drq,   dmac_generic_dma, if_after_dma},
-    {DMA_IUA_CHAN, IUBASE+IUA_DATA_REG, &iu_console.drq, iu_dma,           NULL},
-    {DMA_IUB_CHAN, IUBASE+IUB_DATA_REG, &iu_contty.drq,  iu_dma,           NULL},
+    {DMA_IUA_CHAN, IUBASE+IUA_DATA_REG, &iu_console.drq, iu_dma_console,   NULL},
+    {DMA_IUB_CHAN, IUBASE+IUB_DATA_REG, &iu_contty.drq,  iu_dma_contty,    NULL},
     {0,            0,                   NULL,            NULL,             NULL }
 };
+
+uint32 dma_address(uint8 channel, uint32 offset, t_bool r) {
+    uint32 addr;
+    addr = (PHYS_MEM_BASE + dma_state.channels[channel].addr + offset);
+    /* The top bit of the page address is a R/W bit, so we mask it here */
+    addr |= (uint32) (((uint32)dma_state.channels[channel].page & 0x7f) << 16);
+    return addr;
+}
 
 t_stat dmac_reset(DEVICE *dptr)
 {

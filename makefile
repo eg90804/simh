@@ -194,6 +194,7 @@ ifeq ($(WIN32),)  #*nix Environments (&& cygwin)
       CC_STD = -std=c99
     else
       CPP_BUILD = 1
+      OS_CCDEFS += -Wno-deprecated
     endif
   endif
   ifeq (git-repo,$(shell if $(TEST) -d ./.git; then echo git-repo; fi))
@@ -211,8 +212,8 @@ ifeq ($(WIN32),)  #*nix Environments (&& cygwin)
       NEED_COMMIT_ID = need-commit-id
     endif
     ifeq (need-commit-id,$(NEED_COMMIT_ID))
-      $isodate=$(shell git log -1 --pretty="%ai"|sed -e 's/ /T/'|sed -e 's/ //')
-      $(shell git log -1 --pretty="SIM_GIT_COMMIT_ID %H%nSIM_GIT_COMMIT_TIME $isodate" >.git-commit-id)
+      isodate=$(shell git log -1 --pretty="%ai"|sed -e 's/ /T/'|sed -e 's/ //')
+      $(shell git log -1 --pretty="SIM_GIT_COMMIT_ID %H%nSIM_GIT_COMMIT_TIME $(isodate)" >.git-commit-id)
     endif
   endif
   LTO_EXCLUDE_VERSIONS = 
@@ -252,7 +253,7 @@ ifeq ($(WIN32),)  #*nix Environments (&& cygwin)
       endif
       $(info *** Warning ***)
     endif
-    OS_CCDEFS = -D_GNU_SOURCE
+    OS_CCDEFS += -D_GNU_SOURCE
     GCC_OPTIMIZERS_CMD = $(GCC) -v --help 2>&1
     GCC_WARNINGS_CMD = $(GCC) -v --help 2>&1
     LD_ELF = $(shell echo | $(GCC) -E -dM - | grep __ELF__)
@@ -1041,7 +1042,7 @@ ifneq ($(DEBUG),)
   BUILD_FEATURES = - debugging support
 else
   ifneq (clang,$(findstring clang,$(COMPILER_NAME)))
-    CFLAGS_O = -O2
+    CFLAGS_O = -O0
     ifeq (Darwin,$(OSTYPE))
       NO_LTO = 1
     endif
@@ -1771,7 +1772,7 @@ ALL = pdp1 pdp4 pdp7 pdp8 pdp9 pdp15 pdp11 pdp10 \
 	i7094 ibm1130 id16 id32 sds lgp h316 cdc1700 \
 	swtp6800mp-a swtp6800mp-a2 tx-0 ssem b5500 isys8010 isys8020 \
 	isys8030 isys8024 imds-225 scelbi 3b2 i701 i704 i7010 i7070 i7080 i7090 \
-	i650 sigma uc15
+	sigma uc15
 
 all : ${ALL}
 

@@ -1099,7 +1099,8 @@ extern int32 sim_asynch_inst_latency;
                     sim_debug (SIM_DBG_EVENT, sim_dflt_dev, "Queue Corruption detected\n");\
                     fclose(sim_deb);                            \
                     }                                           \
-                sim_printf("Queue Corruption detected\n");      \
+                sim_printf("Queue Corruption detected in %s line %d\n",\
+                           __FILE__, __LINE);                   \
                 abort();                                        \
                 }                                               \
         if (lock)                                               \
@@ -1255,7 +1256,12 @@ extern int32 sim_asynch_inst_latency;
       return SCPE_OK;                                                  \
     } else (void)0
 #endif /* USE_AIO_INTRINSICS */
-#define AIO_VALIDATE if (!pthread_equal ( pthread_self(), sim_asynch_main_threadid )) {sim_printf("Improper thread context for operation\n"); abort();}
+#define AIO_VALIDATE(uptr)                                             \
+    if (!pthread_equal ( pthread_self(), sim_asynch_main_threadid )) { \
+      sim_printf("Improper thread context for operation on %s in %s line %d\n", \
+                   sim_uname(uptr), __FILE__, __LINE__);               \
+      abort();                                                         \
+      } else (void)0
 #define AIO_CHECK_EVENT                                                \
     if (0 > --sim_asynch_check) {                                      \
       AIO_UPDATE_QUEUE;                                                \
@@ -1271,7 +1277,7 @@ extern int32 sim_asynch_inst_latency;
 #define AIO_QUEUE_MODE "Asynchronous I/O is not available"
 #define AIO_UPDATE_QUEUE
 #define AIO_ACTIVATE(caller, uptr, event_time)
-#define AIO_VALIDATE
+#define AIO_VALIDATE(uptr)
 #define AIO_CHECK_EVENT
 #define AIO_INIT
 #define AIO_MAIN_THREAD TRUE

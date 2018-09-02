@@ -203,23 +203,23 @@ uint32 i, tot, tim;
 
 sim_os_set_thread_priority (PRIORITY_ABOVE_NORMAL);
 #if defined(MS_MIN_GRANULARITY) && (MS_MIN_GRANULARITY != 1)
-real_sim_idle_ms_sleep (1);         /* Start sampling on a tick boundary */
+real_sim_idle_ms_sleep (2);         /* Start sampling on a tick boundary */
 for (i = 0, tot = 0; i < sleep1Samples; i++)
     tot += real_sim_idle_ms_sleep (1);
 tim = tot / sleep1Samples;          /* Truncated average */
 real_sim_os_sleep_min_ms = tim;
-real_sim_idle_ms_sleep (1);         /* Start sampling on a tick boundary */
+real_sim_idle_ms_sleep (2);         /* Start sampling on a tick boundary */
 for (i = 0, tot = 0; i < sleep1Samples; i++)
     tot += real_sim_idle_ms_sleep (real_sim_os_sleep_min_ms + 1);
 tim = tot / sleep1Samples;          /* Truncated average */
 real_sim_os_sleep_inc_ms = tim - real_sim_os_sleep_min_ms;
 #endif /* defined(MS_MIN_GRANULARITY) && (MS_MIN_GRANULARITY != 1) */
-sim_idle_ms_sleep (1);              /* Start sampling on a tick boundary */
+sim_idle_ms_sleep (2);              /* Start sampling on a tick boundary */
 for (i = 0, tot = 0; i < sleep1Samples; i++)
     tot += sim_idle_ms_sleep (1);
 tim = tot / sleep1Samples;          /* Truncated average */
 sim_os_sleep_min_ms = tim;
-sim_idle_ms_sleep (1);              /* Start sampling on a tick boundary */
+sim_idle_ms_sleep (2);              /* Start sampling on a tick boundary */
 for (i = 0, tot = 0; i < sleep1Samples; i++)
     tot += sim_idle_ms_sleep (sim_os_sleep_min_ms + 1);
 tim = tot / sleep1Samples;          /* Truncated average */
@@ -239,29 +239,33 @@ return sim_os_sleep_min_ms;
 #if defined(SIM_ASYNCH_IO)
 uint32 sim_idle_ms_sleep (unsigned int msec)
 {
-uint32 start_time = sim_os_msec();
-struct timespec done_time;
+struct timespec start_time, end_time, done_time, delta_time;
+uint32 delta_ms;
 t_bool timedout = FALSE;
 
-clock_gettime(CLOCK_REALTIME, &done_time);
-done_time.tv_sec += (msec/1000);
-done_time.tv_nsec += 1000000*(msec%1000);
-if (done_time.tv_nsec >= 1000000000) {
-  done_time.tv_sec += done_time.tv_nsec/1000000000;
-  done_time.tv_nsec = done_time.tv_nsec%1000000000;
+clock_gettime(CLOCK_REALTIME, &start_time);
+end_time = start_time;
+end_time.tv_sec += (msec/1000);
+end_time.tv_nsec += 1000000*(msec%1000);
+if (end_time.tv_nsec >= 1000000000) {
+  end_time.tv_sec += end_time.tv_nsec/1000000000;
+  end_time.tv_nsec = end_time.tv_nsec%1000000000;
   }
 pthread_mutex_lock (&sim_asynch_lock);
 sim_idle_wait = TRUE;
-if (pthread_cond_timedwait (&sim_asynch_wake, &sim_asynch_lock, &done_time))
+if (pthread_cond_timedwait (&sim_asynch_wake, &sim_asynch_lock, &end_time))
     timedout = TRUE;
 else
     sim_asynch_check = 0;                 /* force check of asynch queue now */
 sim_idle_wait = FALSE;
 pthread_mutex_unlock (&sim_asynch_lock);
+clock_gettime(CLOCK_REALTIME, &done_time);
 if (!timedout) {
     AIO_UPDATE_QUEUE;
     }
-return sim_os_msec() - start_time;
+sim_timespec_diff (&delta_time, &done_time, &start_time);
+delta_ms = (uint32)((delta_time.tv_sec * 1000) + (delta_time.tv_nsec / 1000000));
+return delta_ms;
 }
 #else
 uint32 sim_idle_ms_sleep (unsigned int msec)
@@ -373,7 +377,6 @@ return quo;
 void sim_os_sleep (unsigned int sec)
 {
 sleep (sec);
-return;
 }
 
 uint32 sim_os_ms_sleep_init (void)
@@ -419,24 +422,26 @@ const t_bool rtc_avail = TRUE;
 
 uint32 sim_os_msec (void)
 {
-return timeGetTime ();
+__int64 nowTime;
+
+GetSystemTimeAsFileTime ((FILETIME *)&nowTime);
+return (uint32)(((nowTime + 5000) / 10000) & 0xFFFFFFFF);
 }
 
 void sim_os_sleep (unsigned int sec)
 {
 Sleep (sec * 1000);
-return;
 }
+
+static TIMECAPS timers;
 
 void sim_timer_exit (void)
 {
-timeEndPeriod (sim_idle_rate_ms);
-return;
+timeEndPeriod (timers.wPeriodMin);
 }
 
 uint32 sim_os_ms_sleep_init (void)
 {
-TIMECAPS timers;
 MMRESULT mm_status;
 
 mm_status = timeGetDevCaps (&timers, sizeof (timers));
@@ -496,7 +501,6 @@ return 0;
 
 void sim_os_sleep (unsigned int sec)
 {
-return;
 }
 
 uint32 sim_os_ms_sleep_init (void)
@@ -538,7 +542,6 @@ return (uint32) millis;
 void sim_os_sleep (unsigned int sec)
 {
 sleep (sec);
-return;
 }
 
 uint32 sim_os_ms_sleep_init (void)
@@ -597,7 +600,6 @@ return msec;
 void sim_os_sleep (unsigned int sec)
 {
 sleep (sec);
-return;
 }
 
 uint32 sim_os_ms_sleep_init (void)
@@ -824,7 +826,6 @@ int32 tmr;
 for (tmr = 0; tmr <= SIM_NTIMERS; tmr++)
     if (rtc_initd[tmr] != 0)
         sim_rtcn_init (rtc_initd[tmr], tmr);
-return;
 }
 
 int32 sim_rtcn_init (int32 time, int32 tmr)
@@ -2131,8 +2132,10 @@ return ((double)time->tv_sec)+(double)(time->tv_nsec)/1000000000.0;
 
 static void _double_to_timespec (struct timespec *time, double dtime)
 {
-time->tv_sec = (time_t)floor(dtime);
-time->tv_nsec = (long)((dtime-floor(dtime))*1000000000.0);
+double int_part = floor(dtime);
+
+time->tv_sec = (time_t)int_part;
+time->tv_nsec = (long)((dtime - int_part)*1000000000.0);
 }
 
 double sim_timenow_double (void)
@@ -2517,7 +2520,7 @@ return inst_per_sec;
 
 t_stat sim_timer_activate (UNIT *uptr, int32 interval)
 {
-AIO_VALIDATE;
+AIO_VALIDATE(uptr);
 return sim_timer_activate_after (uptr, (double)((interval * 1000000.0) / sim_timer_inst_per_sec ()));
 }
 
@@ -2528,7 +2531,7 @@ int inst_delay, tmr;
 double inst_delay_d, inst_per_usec;
 t_stat stat;
 
-AIO_VALIDATE;
+AIO_VALIDATE(uptr);
 /* If this is a clock unit, we need to schedule the related timer unit instead */
 for (tmr=0; tmr<=SIM_NTIMERS; tmr++)
     if (sim_clock_unit[tmr] == uptr) {
