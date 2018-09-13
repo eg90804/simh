@@ -116,7 +116,7 @@ extern DEVICE dup_dev;
 extern DEVICE dpv_dev;
 extern DEVICE kmc_dev;
 extern DEVICE uca_dev, ucb_dev;
-extern UNIT cpu_unit;
+extern DEVICE rom_dev;
 extern REG cpu_reg[];
 extern int32 saved_PC;
 #ifdef OPCON
@@ -200,6 +200,7 @@ DEVICE *sim_devices[] = {
 #ifdef OPCON
     &oc_dev,
 #endif
+    &rom_dev,
 #else
     &clk_dev,
     &tti_dev,

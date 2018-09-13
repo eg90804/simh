@@ -69,6 +69,7 @@ extern void fixup_mbus_tab (void);
 
 t_stat (*iodispR[IOPAGESIZE >> 1])(int32 *dat, int32 ad, int32 md);
 t_stat (*iodispW[IOPAGESIZE >> 1])(int32 dat, int32 ad, int32 md);
+DIB *iodibp[IOPAGESIZE >> 1];
 
 int32 int_vec[IPL_HLVL][32];                            /* int req to vector */
 int32 (*int_ack[IPL_HLVL][32])(void);                   /* int ack routines */
@@ -120,6 +121,23 @@ if (iodispW[idx]) {
     return stat;
     }
 return SCPE_NXM;
+}
+
+/* I/O page CPU register verifier
+
+   Inputs:
+        pa      =       address
+   Outputs:
+        status  =       TRUE or FALSE
+*/
+t_bool iopageCPUReg (uint32 pa)
+{
+int32 idx;
+DIB *dibp;
+
+idx = (pa & IOPAGEMASK) >> 1;
+dibp = iodibp[idx];
+return (dibp && (dibp->dptr == &cpu_dev));
 }
 
 /* Calculate interrupt outstanding
@@ -244,11 +262,13 @@ uint32 alim, lim, ma;
 if (oc_active) oc_set_master(FALSE);
 #endif
 
-if (ba >= IOPAGEBASE) {
+/* I/O Page DMA only on Unibus systems */
+if (UNIBUS && (ba >= (uint32)(IOPAGEBASE & UNIMASK))) {
     int32 value;
 
     while (bc) {
-        if (iopageR( &value, (ba & ~1), READ) != SCPE_OK)
+        if (iopageCPUReg (ba) ||
+            (iopageR( &value, (ba & ~1), READ) != SCPE_OK))
             break;
         *buf++ = (uint8) (((ba & 1)? (value >> 8): value) & 0xff);
         ba++;
@@ -313,7 +333,8 @@ uint32 alim, lim, ma;
 if (oc_active) oc_set_master(FALSE);
 #endif
 
-if (ba >= IOPAGEBASE) {
+/* I/O Page DMA only on Unibus systems */
+if (UNIBUS && (ba >= (uint32)(IOPAGEBASE & UNIMASK))) {
     int32 value;
     if ((ba & 1) || (bc & 1))
 #ifdef OPCON
@@ -326,7 +347,8 @@ if (ba >= IOPAGEBASE) {
 #endif
 
     while (bc) {
-        if (iopageR( &value, ba, READ) != SCPE_OK)
+        if (iopageCPUReg (ba) ||
+            (iopageR( &value, ba, READ) != SCPE_OK))
             break;
         *buf++ = (uint16) (value & 0xffff);
         ba += 2;
@@ -386,9 +408,11 @@ uint32 alim, lim, ma;
 if (oc_active) oc_set_master(FALSE);
 #endif
 
-if (ba >= IOPAGEBASE) {
+/* I/O Page DMA only on Unibus systems */
+if (UNIBUS && (ba >= (uint32)(IOPAGEBASE & UNIMASK))) {
     while (bc) {
-        if (iopageW( ((int32) *buf++) & 0xff, ba, WRITEB) != SCPE_OK)
+        if (iopageCPUReg (ba) ||
+            (iopageW( ((int32) *buf++) & 0xff, ba, WRITEB) != SCPE_OK))
             break;
         ba++;
         bc--;
@@ -451,7 +475,8 @@ uint32 alim, lim, ma;
 if (oc_active) oc_set_master(FALSE);
 #endif
 
-if (ba >= IOPAGEBASE) {
+/* I/O Page DMA only on Unibus systems */
+if (UNIBUS && (ba >= (uint32)(IOPAGEBASE & UNIMASK))) {
     if ((ba & 1) || (bc & 1))
 #ifdef OPCON
         {
@@ -462,7 +487,8 @@ if (ba >= IOPAGEBASE) {
         return bc;
 #endif
     while (bc) {
-        if (iopageW( ((int32) *buf++) & 0xffff, ba, WRITE) != SCPE_OK)
+        if (iopageCPUReg (ba) ||
+            (iopageW( ((int32) *buf++) & 0xffff, ba, WRITE) != SCPE_OK))
             break;
         ba += 2;
         bc -= 2;
@@ -535,17 +561,18 @@ for (i = 0; i < 7; i++)                                 /* seed PIRQ intr */
 if ((r = cpu_build_dib ()))                             /* build CPU entries */
     return r;
 for (i = 0; (dptr = sim_devices[i]) != NULL; i++) {     /* loop thru dev */
-    dibp = (DIB *) dptr->ctxt;                          /* get DIB */
-    if (dibp && !(dptr->flags & DEV_DIS)) {             /* defined, enabled? */
-        if (dptr->flags & DEV_MBUS) {                   /* Massbus? */
-            if ((r = build_mbus_tab (dptr, dibp)))      /* add to Mbus tab */
-                return r;
-            }
-        else {                                          /* no, Unibus */
-            if ((r = build_ubus_tab (dptr, dibp)))      /* add to Unibus tab */
-                return r;
-            }
-        }                                               /* end if enabled */
+    for (dibp = (DIB *) dptr->ctxt; dibp; dibp = dibp->next) {  /* loop thru dibs */
+        if (dibp && !(dptr->flags & DEV_DIS)) {         /* defined, enabled? */
+            if (dptr->flags & DEV_MBUS) {               /* Massbus? */
+                if ((r = build_mbus_tab (dptr, dibp)))  /* add to Mbus tab */
+                    return r;
+                }
+            else {                                      /* no, Unibus */
+                if ((r = build_ubus_tab (dptr, dibp)))  /* add to Unibus tab */
+                    return r;
+                }
+            }                                           /* end if enabled */
+        }
     }                                                   /* end for */
 return SCPE_OK;
 }
