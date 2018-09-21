@@ -25,7 +25,7 @@ void sighan() { end_prog = 1; }
 int main(int ac, char **av)
 {
   int x, oc_shmid;
-  key_t	oc_key = 201702;
+  key_t	oc_key = 201809;
   char c;
   OC_ST *ocp;
   extern int errno, end_prog;

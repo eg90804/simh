@@ -24,10 +24,11 @@
    dealings in this Software without prior written authorization from the
    author(s).
 
-   28-Feb-17    EG      Rewrote part of smh version
-   27-Apr-16    EG      Rewrote, consoletask is now a separate process
-   20-mar-14    EG      new oc_svc, oc_get_rotary, minor changes
-   08-Feb-14    EG      Rewrite of original realcons.c & adapted for simh 4.0 
+   21-sep-18    EG	Remove 11/45 code, cleanup
+   28-feb-17    EG      Rewrote part of smh version
+   27-apr-16    EG      Rewrote, consoletask is now a separate process
+   20-mar-14    EG      New oc_svc, oc_get_rotary, minor changes
+   08-feb-14    EG      Rewrite of original realcons.c & adapted for simh 4.0 
 */
 
 #ifndef OC_DEFS
@@ -40,12 +41,16 @@
 
 //#define DEBUG_OC 1 				/* enable/disable debug */
 
-#define OPCON_SHM				/* select this for shm model */
-//#define OPCON_THR				/* select this for pthread model */
+/*
+ * Model to use.
+ *   Define OPCON_SHM for shared memory model,
+ *   Define OPCON_THR for multi thread model
+ *   Define OPCON_SER for direct serial model.
+ */
+#define OPCON_SHM				/* shm model */
+//#define OPCON_THR				/* pthread model */
+//#define OPCON_SER				/* direct serial model */
 
-#ifndef MOD_1145
-#define MOD_1145	10
-#endif
 #ifndef MOD_1170
 #define MOD_1170	12
 #endif
@@ -59,17 +64,12 @@
 #define SWR_08_15_PORT	     INP2	/* SWITCH REGISTER 15-8 */
 #define SWR_16_22_PORT	     INP3	/* SWITCH REGISTER 16-22 */
 
-/* 11/45 switches / ports, etc. */
-#define SW_PL_1145	     0x80	/* key switch  bitfield */
-#define SW_HE_1145	     0x01	/* HALT bitfield */
-#define SW_SY_1145           0x02       /* SBUSSYC bitfield */
-
 /* 11/70 switches / ports, etc. */
 #define SW_PL_1170	     0x80	/* key switch bitfield */
 #define SW_HE_1170	     0x40	/* HALT bitfield */
 #define SW_SY_1170           0x20       /* SBUSSYC bitfield */
 
-/* DISPLAY ADDRESS rotary switch for 11/45 & 11/70 */
+/* DISPLAY ADDRESS rotary switch for 11/70 */
 #define DSPA_PROGPHY	     0x00	/* PROG PHY */
 #define DSPA_KERNEL_D	     0x01	/* KERNEL D */
 #define DSPA_KERNEL_I	     0x02	/* KERNEL I */
@@ -80,7 +80,7 @@
 #define DSPA_USER_I	     0x07	/* USER I */
 #define DSPA_MASK	     0x07	/* mask for DSPA range */
 
-/* DISPLAY DATA rotary switch for 11/45 & 11/70 */
+/* DISPLAY DATA rotary switch for 11/70 */
 #define DSPD_BUS_REG	     0x00	/* BUS REG */
 #define DSPD_DATA_PATHS	     0x01	/* DATA PATHS */
 #define DSPD_DISP_REG	     0x02	/* DISPLAY REGISTER */
@@ -103,7 +103,7 @@
 #define MD_UND			2	/* protection mode - UNDEFINED */
 #define MD_USR			3	/* protection mode - USER */
 
-/* Shared definitions for 11/45 & 11/70 */
+/* Shared definitions for 11/70 */
 #define FSTS_RUN	0x80		/* common for both */
 #define FSTS_MASTER	0x40
 #define FSTS_INDDATA	0x04
@@ -113,24 +113,17 @@
 
 /* STAT_1_OUTPORT 11/70 */
 /* out3  [2] |  RUN  | MASTER| PAUSE |ADRSERR| PARERR|INDDATA|MMR0[1]|MMR0[0]*/
-#define FSTS_1170_PAUSE	        0x20
-#define FSTS_1170_ADRSERR	0x10
-#define FSTS_1170_PARERR	0x08
+#define FSTS_PAUSE	0x20
+#define FSTS_ADRSERR	0x10
+#define FSTS_PARERR	0x08
 
 /* STAT_2_OUTPORT 11/70 */
 /* out2  [1] |       |       |       | PARHI | PARLO | 22BIT | 18BIT | 16BIT */
-#define FSTS_1170_PARHI	        0x10
-#define FSTS_1170_PARLO	        0x08
-#define FSTS_1170_22BIT	        0x04
-#define FSTS_1170_18BIT	        0x02
-#define FSTS_1170_16BIT	        0x01
-
-/* STAT_1_OUTPORT 11/45 (11/50 & 11/55)	*/
-/* out6  [5] |  RUN  | MASTER|ADRSERR| PAUSE |       |INDATA |MMR0[1]|MMR0[0] */
-#define FSTS_1145_ADRSERR       0x20
-#define FSTS_1145_PAUSE	        0x10
-
-/* STAT_2_OUTPORT 11/45, 11/50 & 11/55  --> not used */
+#define FSTS_PARHI	0x10
+#define FSTS_PARLO	0x08
+#define FSTS_22BIT	0x04
+#define FSTS_18BIT	0x02
+#define FSTS_16BIT	0x01
 
 /* index values for data array */
 #define DISP_SHFR	0	/* data paths (shiftr); normal setting  */
@@ -153,7 +146,7 @@
 
 /* OC controlblock */
 struct OC_ST {
-  t_bool sir;           /* copy of sim_is_running value */
+  t_bool sir;			/* copy of sim_is_running value */
   t_bool first_exam;		/* flag: first EXAM action */
   t_bool first_dep;		/* flag: first DEP action */
   t_bool ind_addr;		/* flag: indirect address */
@@ -193,8 +186,10 @@ extern OC_ST *ocp;
 #define OC_MMR3
 #define OC_INTERVAL 1000        /* in micro sec */                            
 #define OC_MINVAL 4000          /* in micro sec */                             
-int pthread_create(pthread_t *a, CONST pthread_attr_t *b, void *(*c)(void*), void *d);
-int pthread_join(pthread_t a, void **d);
+# ifdef OPCON_THR
+  int pthread_create(pthread_t *a, CONST pthread_attr_t *b, void *(*c)(void*), void *d);
+  int pthread_join(pthread_t a, void **d);
+# endif
 #endif
 
 struct SERPORT {                                                                
@@ -230,7 +225,7 @@ void    oc_send_S (int a, OC_ST *b);
 void    oc_send_CMD (uint8 cmd, uint8 mask);
 #endif
 
-#ifdef OPCON_THR
+#if defined(OPCON_THR) || defined(OPCON_SER)
 void    oc_console (void);
 int     oc_get_SWR (void);
 void    oc_send_A (uint32 A);
@@ -239,6 +234,9 @@ void    oc_send_ADS (void);
 void    oc_send_S (void);
 void    oc_toggle_ack (uint8 mask);
 void    oc_toggle_clear (void);
+#endif
+
+#ifdef OPCON_THR
 void   *oc_thread(void *end_thr);
 #endif
 

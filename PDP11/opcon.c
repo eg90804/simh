@@ -1,6 +1,6 @@
 /* opcon.c: Interface to a real operator console
  
-   Copyright (c) 2006-2015, Edward Groenenberg & Henk Gooijen
+   Copyright (c) 2006-2017, Edward Groenenberg & Henk Gooijen
 
    Permission is hereby granted, free of charge, to any person obtaining a
    copy of this software and associated documentation files (the "Software"),
@@ -25,34 +25,52 @@
    or other dealings in this Software without prior written
    authorization from the Author or Authors.
 
-   14-Mar-14    EG      added rom address range check, changed interval
-   10-Mar-14    EG      oc_get_CON : add inv addr check 
-                        oc_extract_address : address masking & inv addr flag
-                        added function oc_get_rotary; fix load adrs cmd not -
+   21-sep-18    EG	Remove 11/45 code, cleanup
+   27-jan-17    EG      Merge serial & threading together (compile time switch)
+   17-jan-17    EG      Pthreading version, rename some functions
+   14-mar-14    EG      Added rom address range check, changed interval
+   10-mar-14    EG      oc_get_console : add inv addr check 
+                        oc_get_ADR : address masking & inv addr flag
+                        added function oc_get_RTR; fix load adrs cmd not -
                         to generate 'dep pc xxx'.
-   10-Feb-14    EG      Rewrite, based on original realcons.c code.
+   10-feb-14    EG      Rewrite, based on original realcons.c code.
 */
 
-/* 
- * oc_attach()		: attach device (initialize link)
- * oc_detach()		: detach device (close link)
- * oc_help()		: Generic help
- * oc_help_attach()	: Help for attach command
- * oc_reset()		: device reset
- * oc_show()		: show status of the device (link)
- * oc_svc()		: service routine
- 
- * oc_get_ADR()		: extract address from swr data array
- * oc_get_CON()		: get function command
- * oc_get_DTA()		: extract data from swr data array
- * oc_get_SWR()		: get switch & knob settings from console
- * oc_set_mmu()		: toggle mmu mapping mode (16/18/22 bit)
- * oc_poll()		: pool input channel for data ready
- * oc_set_port1()	: toggle bit on/off in port1 flagbyte
- * oc_set_port2()	: toggle bit on/off in port2 flagbyte
- * oc_set_send_cmd()	: send single byte command
- * oc_read_line_p()	: get command (keyboard or console)
- * oc_set_ringprot()	: toggle ring protection bits (USK)
+/* SIMH integration
+ * oc_attach()			: attach device (initialize link)
+ * oc_detach()			: detach device (close link)
+ * oc_help()			: Generic help
+ * oc_help_attach()		: Help for attach command
+ * oc_read_line_p()		: get command (keyboard or console)
+ * oc_reset()			: device reset
+ * oc_show()			: show status of the device (link)
+ * oc_svc()			: service routine
+ *
+ * OPCON routines
+ * oc_check_halt()              : check halt mode status
+ * oc_clear_halt()		: clear halt mode status
+ * oc_console()			: shared service for oc_svc and oc_thread
+ * oc_get_ADR()			: read address from swr data array
+ * oc_get_CON()			: get function command
+ * oc_get_DTA()			: read data from swr data array
+ * oc_get_HLT()			: get halt status (HALT key down)
+ * oc_get_RTR()			: get rotary knob settings
+ * oc_get_SWR()			: get switch & knob settings from console
+ * oc_poll()			: pool input channel for data ready
+ * oc_read()			: read bytes blocking/non blocking
+ * oc_send_A()			: send address data
+ * oc_send_AD()			: combined send address & data
+ * oc_send_ADS()		: send address/data/status
+ * oc_send_S()			: send status data
+ * oc_set_master()		: toggle master mode
+ * oc_set_mmu()			: toggle mmu mapping mode (16/18/22 bit)
+ * oc_set_port1()		: toggle bit on/off in port1 flagbyte
+ * oc_set_port2()		: toggle bit on/off in port2 flagbyte
+ * oc_set_ringprot()		: toggle ring protection bits (USK)
+ * oc_set_wait()		: toggle wait mode led
+ * oc_thread()			: threading service routine 
+ * oc_toggle_ack()		: acknoledge a state on the console processor
+ * oc_toggle_clear()		: clear all states on the console processor
  *
  * More information can be found in the doc/opcon_doc.txt file
  */
@@ -61,13 +79,10 @@
 #include <unistd.h>
 #include <sys/time.h>
 #include <sys/types.h>
-#include <sys/ipc.h>
-#include <sys/shm.h>
-#include <signal.h>
 #include "sim_defs.h"
+#include "opcon.h"
 #include "scp.h"
 #include "pdp11_defs.h"
-#include "opcon.h"
 #include <ctype.h>
 #include <termio.h>
 #include <sys/ioctl.h>
@@ -75,14 +90,11 @@
 /* Declarations & references for required external routines & variables. */
 extern SERHANDLE sim_open_serial (char *name, TMLN *lp, t_stat *status);
 extern SERHANDLE sim_close_serial (SERHANDLE port);
-extern int32 sim_read_serial(SERHANDLE port, char *bufp, int32 count,char *brk);
-extern int32 sim_write_serial (SERHANDLE port, char *bufp, int32 count);
 extern char *do_position (void);
 extern int32 sim_quiet;			/* Quiet output mode */
-extern int32 MMR0, MMR3;
+extern int32 MMR0, MMR3;		/* MMU registers */
 
-/* Defines */
-#define msleep(n) usleep(n * 1000)
+#define msleep(n) usleep(n * 1000);	/* Millisecond sleep */
 
 /* Debug levels for the OC device */
 #define OCDEB_CON	      001	/* console input */
@@ -94,21 +106,22 @@ extern int32 MMR0, MMR3;
 #define OCDEB_UPD	      100	/* address & data leds update */
 
 /* Global declarations for the OC device */
-OC_ST	*ocp;				/* OC device control block */
+OC_ST *ocp;				/* OC device control block */
 
 /* Debug flags & keywords for the OC device */
 DEBTAB oc_debug[] = {
     { "CON", OCDEB_CON },		/* used in oc_get_CON */
-    { "STS", OCDEB_STS },		/* used in oc_send_CMD (status) */
-    { "SWR", OCDEB_SWR },		/* used in oc_get_SWR */
+    { "HLT", OCDEB_HLT },		/* used in oc_get_HLT */
+    { "STS", OCDEB_STS },		/* used in oc_send_S */
+    { "SWR", OCDEB_SWR },		/* used in oc_get_SWR & oc_get_RTR */
     { "SVC", OCDEB_SVC },		/* used in oc_svc */
-    { "TRC", OCDEB_TRC },		/* used in all major entry points */
-    { "UPD", OCDEB_UPD },		/* used in oc_send_CMD (update)*/
+    { "TRC", OCDEB_TRC },		/* used in all several call entry points */
+    { "UPD", OCDEB_UPD },		/* used in oc_send_AD & oc_send_ADS */
     { 0 }
     };
 
 /* UNIT definition */
-UNIT oc_unit = { UDATA (&oc_svc, UNIT_ATTABLE+UNIT_DISABLE+UNIT_DIS, 0) };
+UNIT oc_unit = { UDATA (&oc_svc, UNIT_ATTABLE + UNIT_DISABLE + UNIT_DIS + UNIT_TEXT, 0) };
 
 /* Modifiers definitions */
 MTAB oc_mod[] = { 
@@ -148,9 +161,10 @@ DEVICE oc_dev = {
     };
 
 t_bool oc_active = FALSE;
-uint32 oc_console_pid = 0;
+struct termios *oc_tty;
+SERHANDLE oc_serhandle;
 
-/*   ***   ***   ***   ***   SIMH device integration   ***   ***   ***   ***   *
+/*   ***   ***   ***   ***   SIMH device integration   ***   ***   ***   ***   */
 
 /*
  * Function : oc_attach()
@@ -163,106 +177,110 @@ uint32 oc_console_pid = 0;
  */
 t_stat oc_attach (UNIT *uptr, CONST char *cptr)
 {
-char *tptr;
-uint32 H, K, i;
+char *cmdp, *tptr;
 t_stat r;
-SERHANDLE p;
-key_t oc_key = 201702;
 
 sim_debug (OCDEB_TRC, &oc_dev, "oc_attach : called\n");
-
-if (cpu_model != MOD_1145 && cpu_model != MOD_1170) {
-  printf ("OC    : No support for the current cpu model.\n");
-  return SCPE_OK;
-  } 
 
 if (cptr == NULL)
     return SCPE_ARG;
 
+if (cpu_model != MOD_1170) {
+    printf ("OC    : Only support for the 11/70 cpu model.\n");
+    return SCPE_OK;
+    }
+
 if ((tptr = strchr (cptr, '=')) == NULL)
     return SCPE_ARG;
-*tptr++; 
+*tptr++;						/* skip '=' */
 
-if ((p = sim_open_serial (tptr, NULL, &r)) == ((SERHANDLE)(void *)-1) ||
-     r != SCPE_OK) {	/* port usable? */
-    sim_close_serial (p);
-    printf("OC    : Cannot open '%s' for usability check (errno = %d).\n", tptr, errno);
+if ((oc_serhandle = sim_open_serial (tptr, NULL, &r)) != ((SERHANDLE)(void *)-1)) { /* port usable? */
+    if (r != SCPE_OK) {
+        sim_close_serial (oc_serhandle);
+        printf ("OC    : console link open error (%d).\n", errno);
+        return -1;
+        }
+    }
+
+if ((ocp = (OC_ST *)malloc(sizeof(OC_ST))) == NULL) {
+    sim_close_serial (oc_serhandle);
+    printf ("OC    : data structure malloc error (%d).\n", errno);
+    sim_close_serial (oc_serhandle);
     return -1;
     }
-sim_close_serial(p);		/* close it, else CPB has a problem */
 
-if ((i = shmget(oc_key, sizeof(OC_ST), (IPC_CREAT | 0666))) < 0 ||
-    (ocp = (OC_ST *)shmat(i, NULL, 0)) == (OC_ST *)-1)  {
-  printf("OC    : Cannot create or attach shm segment (errno = %d).\n", errno);
-  return -1;
-  }
+				/* Configure port reading	      */
+if ((oc_tty = (struct termios *)malloc(sizeof(struct termios))) == NULL) {
+    printf("OCC : failed to alloc space for console processor link (%d)\n", errno);
+    free(ocp);
+    sim_close_serial (oc_serhandle);
+    return -1;
+    }
+if (tcgetattr(oc_serhandle->port, oc_tty)) {
+    printf("OCC : failed to get line attributes (%d)\n", errno);
+    free (oc_tty); free(ocp);
+    sim_close_serial (oc_serhandle);
+    return -1;
+    }
+fcntl(oc_serhandle->port, F_SETFL);
+cfmakeraw(oc_tty);
+oc_tty->c_cc[VMIN] = 0;
+oc_tty->c_cc[VTIME] = 0;			/* no timeout */
+if (tcsetattr(oc_serhandle->port, TCSANOW, oc_tty)) {
+    printf("OCC : failed to set attributes for raw mode\n");
+    free (oc_tty); free(ocp);
+    sim_close_serial (oc_serhandle);
+    return -1;
+    }
 
-memset(ocp, 0, sizeof(OC_ST));
-ocp->cpu_model = cpu_model;
-strcpy(ocp->line, tptr);
+memset (ocp, 0, sizeof(OC_ST));		/* init OC control block */
 ocp->first_exam = TRUE;
 ocp->first_dep = TRUE;
-ocp->HALT = 2;
-ocp->to_cp = 0xFF;
 
-if ((oc_console_pid = fork()) == -1) {
-  printf("OC    : Cannot fork for console processor.\n");
-  if (ocp != 0) shmdt((char *)ocp);
-  return -1;
-  }
+oc_active = TRUE;				/* mark as available */
 
-if (oc_console_pid == 0) {	/* I'm the child */
-  alarm(0);
-  execl("/simh/bin/console", "/simh/bin/console", NULL);
-  printf("OC (C): Exec of console processor task failed.\n");
-  _exit(1);
-  }
-
-/* Try for 5 seconds waiting for 'to_cp' to become cleared */
-for (i = 0; ocp->to_cp != 0 && i < 50; i++)
-  msleep(100);
-
-if (ocp->to_cp != 0) {				/* sub task did not start     */
-  kill(oc_console_pid, SIGKILL);
-  if (ocp != 0) shmdt((char *)ocp);
-  oc_console_pid = 0;
-  printf("OC    : Console processor failed to start.\n");
-  return -1;
-  }
-
-oc_active = TRUE;					/* Mark as available  */
-oc_get_SWR ();				  	/* request console key state  */
-
-if (cpu_model == MOD_1145) {		    /* detect power & halt key position	*/
-    K = ocp->S[INP3] & SW_PL_1145; 
-    H = ocp->S[INP5] & SW_HE_1145;
+cmdp = "p5";
+if (write (oc_serhandle->port, cmdp, 2) != 2) {
+    printf ("OC    : Error sending config type to the console\n");
+    free (oc_tty); free(ocp);
+    sim_close_serial (oc_serhandle);
+    return -1;
     }
-else {
-    K = ocp->S[INP5] & SW_PL_1170;
-    H = ocp->S[INP5] & SW_HE_1170;
-    }
+
+oc_send_AD (0x002109, 0x2018);		/* initial light on console */
+oc_get_SWR ();				/* request console key state */
 
 if (!sim_quiet)
     printf ("OC    : Operator console KEY switch set to ");
-if (!K) {
+if (!(ocp->S[INP5] & SW_PL_1170)) {	/* Key position */
     if (!sim_quiet) {
 	printf ("POWER\n");
         printf ("OC    : Operator console ENABLE/HALT switch set to ");
 	}
-    if (!H) {				/* HALT key is up */
+    if (!(ocp->S[INP5] & SW_HE_1170)) { /* HALT key is up */
 	ocp->HALT = 0;
 	if (!sim_quiet)
-	    printf ("'ENABLE'\n");
+	    printf ("ENABLE\n");
 	}
     else {				/* HALT key is down */
 	ocp->HALT = 2;
 	if (!sim_quiet)
-	    printf ("'HALT'.\n");
+	    printf ("HALT\n");
         }
     }
 else
     if (!sim_quiet)
-	printf ("'LOCK'.\n");
+	printf ("LOCK\n");
+
+#if defined(OPCON_THR)
+if ((r = pthread_create(&ocp->.t_thr, NULL, &oc_thread, (void *)&ocp->t_end)) != 0) {
+    fprintf(stderr, "Error creating OC thread, return code %d\n", r);
+    free (oc_tty); free(ocp);
+    sim_close_serial (oc_serhandle);
+    return -1;
+    }
+while (ocp->A[0] != 0xFF) msleep(2);
+#endif
 
 return SCPE_OK;
 }
@@ -274,20 +292,22 @@ return SCPE_OK;
  */
 t_stat oc_detach (UNIT *uptr)
 {
-t_stat r;
+t_stat r = 0;
 
-if (!oc_active) return SCPE_OK;
+if (!oc_active)	return SCPE_OK;
 
-sim_cancel (&oc_unit);				/* dequeue service routine */
+oc_active = FALSE;			/* clear receiver flag  */
 
-if (oc_console_pid != 0) {
-  kill(oc_console_pid, SIGHUP);
-  oc_console_pid = 0;
-  }
+#if defined(OPCON_THR)
+ocp->t_end = 1;
+msleep(40);				/* allow oc_th to flush */
+pthread_join(ocp->t_thr, NULL);		/* cleanup console sending thread */
+#else
+sim_cancel(&oc_unit);
+#endif
 
-oc_active = FALSE;				/* clear receiver flag */
-if (ocp != NULL) shmdt((char *)ocp);
-
+sim_close_serial (oc_serhandle);
+free (oc_tty); free(ocp);
 return r;
 }
 
@@ -299,19 +319,39 @@ return r;
 t_stat oc_reset (DEVICE *dptr)
 {
 sim_debug (OCDEB_TRC, &oc_dev, "oc_reset : called\n");
+#if defined(OPCON_SER)
+sim_activate_after (&oc_unit, OC_INTERVAL);     /* queue service routine */
+#endif
 return SCPE_OK;
 }
 
 /*
  * Function : oc_svc()
- * Note	    : set the ocp->sir flag at boot/run/go
- *
- * Returns  : SCPE_OK
+ * Note	    : This is the service routine. It is a dummy if OPCON_THR is defined.
  */
+
 t_stat oc_svc (UNIT *uptr)
 {
-if (oc_active) ocp->sir = 1;
-sim_activate_after (uptr, 250000);
+#if defined(OPCON_SER)
+uint32 A, R;
+uint16 D;
+static uint32 resched;
+
+sim_debug (OCDEB_TRC, &oc_dev, "oc_svc : called\n");
+R = sim_os_msec();
+sim_debug (OCDEB_SVC, &oc_dev, "oc_svc : delta = %d\n", R - resched);
+
+if ((R - resched) < OC_MINVAL) {         /* sufficient time passed by? */
+//    sim_activate_after (uptr, OC_MINVAL);       /* reschedule */
+    sim_activate_after (uptr, 1000);       /* reschedule */
+    return 0;
+    }
+resched = R;					/* set as new marker */
+oc_console ();
+//sim_activate_after (uptr, OC_INTERVAL);         /* reschedule */
+sim_activate_after (uptr, 1000);         /* reschedule */
+#endif    
+
 return SCPE_OK;
 }
 
@@ -326,7 +366,6 @@ if (oc_active)
     fputs ("active\n", st);
 else
     fputs ("not active\n", st);
-
 return SCPE_OK;
 }
 
@@ -338,14 +377,14 @@ return SCPE_OK;
  */
 t_stat oc_help (FILE *st, DEVICE *dptr, UNIT *uptr, int32 flag, CONST char *cptr)
 {
-const char *const text =
-" OC11 Remote Operator Console processor subsystem\n"
+CONST char *const text =
+" OC11 Remote Operator Console processor link\n"
 "\n"
 " The OC11 is a pseudo driver and is an interface to the core-IO console\n"
 " processor which allows an original PDP-11 operator console to control the\n"
 " behaviour of SIMH.\n"
-" Actual address, data & status information is checked for each simulated\n"
-" SIMH instruction. A shared memory segment is used for the exchange.\n"
+" Actual address, data & status information is transmitted and switch\n"
+" settings (and knobs) are queried 50 times per second.\n"
 ;
 
 fprintf (st, "%s", text);
@@ -363,22 +402,54 @@ return SCPE_OK;
  */
 t_stat oc_help_attach (FILE *st, DEVICE *dptr, UNIT *uptr, int32 flag, CONST char *cptr)
 {
-const char *const text =
+CONST char *const text =
 " OC device ATTACH help."
 "\n"
-" The OC driver creates a small shared memory segment for exchange with a 2nd process"
-" which does the actual communication with the the console processor hardware."
+" The OC driver uses a serial port to send and receive commands and"
+" data to and from the console processor."
 "\n"
-" The ATTACH command specifies which serial port to be used (is passed to the 2nd process).\n"
-" A serial port must be specified as an operating system specific device name.\n"
+" The ATTACH command specifies which serial port to be used.\n"
+" A serial port may be specified as an operating system specific device name\n"
+" or useing simh generic serial name. Simh generica names are of the form\n"
+" serN, where N is from 0 thru one less than the maximum number of serial\n"
+" ports on the local system. The mapping of simh generic port names to OS \n"
+" specific names can be displayed using the following command:\n"
+"\n"
+"   sim> SHOW SERIAL\n"
+"   Serial devices:\n"
+"    ser0   /dev/ttyS0\n"
+"    ser1   /dev/ttyS1\n"
+"\n"
+"   sim> ATTACH OC connect=ser0\n"
+"\n"
+" or equivalently:\n"
 "\n"
 "   sim> ATTACH OC connect=/dev/ttyS1\n"
+"\n"
+" An optional serial port configuration string may be present after the port\n"
+" name.  If present, it must be separated from the port name with a semicolon\n"
+" and has this form:\n"
+"\n"
+"   <rate>-<charsize><parity><stopbits>\n"
+"\n"
+" where:\n"
+"   rate     = communication rate in bits per second\n"
+"   charsize = character size in bits (5-8, including optional parity)\n"
+"   parity   = parity designator (N/E/O/M/S for no/even/odd/mark/space parity)\n"
+"   stopbits = number of stop bits (1, 1.5, or 2)\n"
+"\n"
+" As an example:\n"
+"\n"
+"   9600-8n1\n"
+" The supported rates, sizes, and parity options are host-specific. If\n"
+" a configuration string is not supplied, then the default of 9600-8N1\n"
+" is used.\n"
 "\n"
 " The connection configured for the OC device are unconfigured by:\n"
 "\n"
 "   sim> DETACH OC\n"
 "\n"
-" This will detach the shared segment and destory the 2nd process.\n"
+" This will close the communication link to the console processor.\n"
 "\n"
 ;
 
@@ -391,7 +462,7 @@ return SCPE_OK;
  * Note     : Single line description
  * Returns  : Pointer to the text
  */
-const char *oc_description (DEVICE *dptr)
+CONST char *oc_description (DEVICE *dptr)
 {
 return "OC11 : Interface to operator console processor";
 }
@@ -399,7 +470,7 @@ return "OC11 : Interface to operator console processor";
 /*   ***   ***   ***   ***   OPCON routines   ***   ***   ***   ***   */
 
 /*
- * Function : oc_check_halt ()
+ * Function : oc_check_halt()
  * Note     : Check the value of the ocp->HALT variable
  * Returns  : 0 - if halt mode = 0 or 1
  *          : 1 - if halt mode = 2
@@ -407,8 +478,8 @@ return "OC11 : Interface to operator console processor";
 t_bool oc_check_halt (void)
 {
 if (oc_active && ocp->HALT)
-  return TRUE;
-  
+    return TRUE;
+
 return FALSE;
 }
 
@@ -419,17 +490,37 @@ return FALSE;
  */
 void oc_clear_halt (void)
 {
-if (cpu_model == MOD_1145)
-  ocp->S[INP5] = ocp->S[INP5] & (~SW_HE_1145);
-else
-  ocp->S[INP5] = ocp->S[INP5] & (~SW_HE_1170);
- 
-oc_send_CMD('R', 0);	/* clear all toggles and clear HALT */
+ocp->S[INP5] = ocp->S[INP5] & (~SW_HE_1170);
+oc_toggle_clear ();
+ocp->HALT = 0;
+}
+
+/*
+ * Function : oc_console()
+ * Note     : Shared function between oc_svc and oc_thread for
+  *           updating the console leds and reading the swr/rotary data
+ * Returns  : Nothing
+ */
+void oc_console(void)
+{
+static int c_cnt = 0;
+
+oc_send_ADS ();
+switch(c_cnt++) {
+    default : break;
+    case  3 : oc_get_RTR (); break;     /* get rotary only */
+    case  7 : oc_get_HLT (); break;     /* get halt mode */
+    case 10 : oc_get_SWR ();            /* get all switch values */
+              if (ocp->S[INP5] & SW_HE_1170)	/* halt switch used? */
+                ocp->HALT = 2;      /* Yes, set it */
+              break;
+    case 11 : c_cnt = 0;     break;
+    }
 }
 
 /*
  * Function : oc_get_CON()
- * Note     : Poll the console processor for a single byte command.
+ * Note     : Poll the console link for a single byte command.
  * 	      It is processed and appropiate action is taken.
  *
  *            There are special address increment conditions when depositing
@@ -448,34 +539,42 @@ oc_send_CMD('R', 0);	/* clear all toggles and clear HALT */
  */
 t_bool oc_get_CON (char *cptr)
 {
-char brk = 0;
+uint8 c = 0;
 uint16 D;
 uint32 A;
-extern uint16 *M;			/* memory */
 
 sim_debug (OCDEB_TRC, &oc_dev, "oc_get_CON : called\n");
 
-if (!ocp->fm_cp) return FALSE;		/* link open or no cmd? */
+if (oc_poll (oc_serhandle, 10000) == (t_bool)FALSE ||	/* wait 10 msec for input */
+    read (oc_serhandle->port, &c, 1) != 1 || 
+    c == 0)
+    return FALSE;
 
-sim_debug (OCDEB_CON, &oc_dev, "oc_get_CON : byte = %c\n", ocp->fm_cp);
+sim_debug (OCDEB_CON, &oc_dev, "oc_get_CON : byte = 0x%02X (%c)\n", c, c);
 
-switch (ocp->fm_cp) {
-    case 'c' :					/* CONTINU */
-	oc_send_CMD ('O', ACK_CONT);
-	ocp->fm_cp = 0;
+switch (c) {
+    case 'H' :					/* HALT/ENABLE->HALT */
+	ocp->HALT = 2;
+	strcpy (cptr, ";halt key down\n");
+	break;
+    case 'E' :					/* HALT/ENABLE->ENABLE */
+	ocp->HALT = 1;
+	strcpy (cptr, ";halt key up\n");
+//	oc_toggle_ack (ACK_CONT);
+	oc_toggle_clear ();
+	break;
+    case 'c' :					/* CONTINUE */
+	oc_toggle_ack (ACK_CONT);
 	if (ocp->HALT == 2)
 	    strcpy (cptr, "step\n");		/* STEP when HALT is down */
 	else {
 	    strcpy (cptr, "continue\n");
-	    if (cpu_model == MOD_1145)
-	        oc_set_port1 (FSTS_1145_ADRSERR, 0);
-	    else
-	        oc_set_port1 (FSTS_1170_ADRSERR, 0);
+	    oc_set_port1 (FSTS_ADRSERR, 0);
 	    oc_clear_halt ();
 	    }
-	return TRUE;
 	break;
     case 'd' :					/* DEPOSIT */
+        oc_get_SWR ();	/* get actual switch settings */
 	if (ocp->first_dep == FALSE) {	/* 1st dep cmd? */
 	    if ((ocp->act_addr >= 0x3FFC0) && 
 		(ocp->act_addr <= 0x3FFC7))
@@ -489,10 +588,7 @@ switch (ocp->fm_cp) {
 		}
 	    }
 	if (ocp->inv_addr) {	/* above mem range? */
-	    if (cpu_model == MOD_1145)
-		oc_set_port1 (FSTS_1145_ADRSERR, 1);
-	    else
-		oc_set_port1 (FSTS_1170_ADRSERR, 1);
+	    oc_set_port1 (FSTS_ADRSERR, 1);
 	    strcpy (cptr, ";address out of defined range\n");
 	    }
 	else {	/* no deposits in boot rom address range or device roms */
@@ -507,45 +603,39 @@ switch (ocp->fm_cp) {
 		strcpy (cptr, ";no deposit in boot rom range\n");
 		}
 	    else {
-		oc_get_SWR ();		/* get actual switch settings */
-		ocp->act_data = oc_get_DTA ();	/* get 'data' data */
+		D = oc_get_DTA ();		/* get 'data' data */
 		ocp->first_exam = TRUE;
 		ocp->first_dep = FALSE;
-		oc_send_CMD('B', 0); 	/* send A & D */
-		sprintf (cptr, "deposit %08o %06o\n", ocp->act_addr, ocp->act_data);
+		oc_send_AD (ocp->act_addr, D);
+		sprintf (cptr, "deposit %o %o\n", ocp->act_addr, D);
 		}
 	    }
-	oc_send_CMD ('O', ACK_DEPO);		/* ack */
+	oc_toggle_ack (ACK_DEPO);		/* ack */
 	break;
     case 'l' :					/* LOAD ADDRS */
-	if (cpu_model == MOD_1145)
-	  oc_set_port1 (FSTS_1145_ADRSERR, 0);
-	else
-	  oc_set_port1 (FSTS_1170_ADRSERR, 0);
+	oc_set_port1 (FSTS_ADRSERR, 0);	/* clear some flags */
         oc_get_SWR ();	/* get actual switch settings */
 	ocp->first_dep = TRUE;
 	ocp->first_exam = TRUE;
 	ocp->act_addr = oc_get_ADR ();
-	oc_send_CMD('A', 0);	/* send address to display */
+	oc_send_A (ocp->act_addr);
 	sprintf (cptr, ";load address %08o\n", ocp->act_addr);
-	oc_send_CMD ('O', ACK_LOAD) ;
+	oc_toggle_ack (ACK_LOAD) ;
 	break;
     case 's' :					/* START */
 	if (ocp->HALT == 2) {
 	    strcpy (cptr, "reset all\n");	/* RESET when HALT is down */
-	    if (cpu_model == MOD_1170)
-		oc_set_port1 (FSTS_1170_ADRSERR, 0);
+	    oc_set_port1 (FSTS_ADRSERR, 0);
 	    }
 	else
-	    sprintf (cptr, "run %08o\n", ocp->act_addr);
-//	oc_send_CMD ('O', ACK_START);
-	ocp->fm_cp = 0;
+	    sprintf (cptr, "run %o\n", ocp->act_addr);
+//	oc_toggle_ack (ACK_START);
 	oc_clear_halt ();
-	return TRUE;
-	break;	/* not reached */
+	break;
     case 'x' :					/* EXAMINE */
 	if (ocp->first_exam == FALSE) { /* not 1st EXAM: auto-incr. */
-	    if ((ocp->act_addr >= 0x3FFC0) && (ocp->act_addr <= 0x3FFC7))
+	    if ((ocp->act_addr >= 0x3FFC0) && 
+		(ocp->act_addr <= 0x3FFC7))
 	        ocp->act_addr += 1;	/* in CPU register space +1 */
 	    else {
 	        ocp->act_addr += 2;	/* rest of address space +2 */
@@ -556,29 +646,85 @@ switch (ocp->fm_cp) {
 	        }
 	    }
 	if (ocp->inv_addr) {
-	    if (cpu_model == MOD_1145)
-	      oc_set_port1 (FSTS_1145_ADRSERR, 1);
-	    else
-	      oc_set_port1 (FSTS_1170_ADRSERR, 1);
+	    oc_set_port1 (FSTS_ADRSERR, 1);
 	    strcpy (cptr, ";address out of defined range\n");
 	    }
 	else {
 	    ocp->first_exam = FALSE;
 	    ocp->first_dep = TRUE;
-	    ocp->act_data = (uint16)M[(ocp->act_addr >> 1)];
-	    oc_send_CMD('B', 0);
-	    sprintf (cptr, "examine %08o\n", ocp->act_addr); 
+	    oc_send_A (ocp->act_addr);
+	    sprintf (cptr, "examine %o\n", ocp->act_addr); 
 	    }
-	oc_send_CMD ('O', ACK_EXAM);
+	oc_toggle_ack (ACK_EXAM);
 	break;
-    default :			/* stray byte? ignore and clear it */
-    	ocp->fm_cp = 0;
+    default :				/* stray byte? just ignore it */
 	return FALSE;
 	break;
     }
-msleep(75);
-ocp->fm_cp = 0;	
+
+if (ocp->HALT)
+    oc_send_S ();			/* update console status leds */
+
 return TRUE;
+}
+
+/*
+ * Function : oc_get_HLT()
+ * Note     : Check non-blocking if the HALT/ENABLE switch is set to HALT.
+ *            If it is another command byte, only acknowledge it to the
+ *            console processor.
+ *	      also preempts the read queue as a side effect.
+ * Returns  : 0 - nothing
+ * 	      1 - set
+ */
+t_bool oc_get_HLT (void)
+{
+uint8 c = 0;
+
+sim_debug (OCDEB_TRC, &oc_dev, "oc_get_HLT : called\n");
+
+if (oc_read (oc_serhandle, &c, 1, 1) != 1)
+    return FALSE;
+
+sim_debug (OCDEB_HLT, &oc_dev, "oc_get_HLT : got (%2X:%c)\n", c, c);
+
+if (c == 'H') {				/* HALT switch down? */
+    ocp->HALT = 2;			/* flag it */
+    return TRUE;
+    }
+
+if (strchr ("cdlsx", c) != NULL)     /* known toggle? -> clear */
+    oc_toggle_clear ();
+
+return FALSE;
+}
+
+/*
+ * Function : oc_get_RTR()
+ * Note     : Send the Rotary command to the operator console 
+ *	      Then read the byte representing the status of the 2 rotary knobs.
+ *  	      The result is stored in one of the "ocp->S[]" fields matching
+ *            the positionof the 'Q' command.
+ *  	      This function only works for the 11/45 & 11/70
+ *  Returns : 0 or -1
+ */
+int oc_get_RTR (void)
+{
+uint8 c = 'R';
+
+sim_debug (OCDEB_TRC, &oc_dev, "oc_get_RTR : called\n");
+
+if (write (oc_serhandle->port, &c, 1) != 1)
+    printf("OC    : Error sending 'ROTARY' command.\n");
+
+if (oc_read (oc_serhandle, &c, 1, 0) != 1)
+    return -1;
+
+sim_debug (OCDEB_SWR, &oc_dev, "oc_get_RTR : byte = 0x%02X\n", c);
+
+ocp->S[INP5] = c;
+
+return 0;
 }
 
 /*
@@ -589,17 +735,24 @@ return TRUE;
  *  	      "ocp->S[]".
  *  Returns : 0 or -1
  */
-void oc_get_SWR (void)
+int oc_get_SWR (void)
 {
+uint8 c = 'Q';
+int x;
+
 sim_debug (OCDEB_TRC, &oc_dev, "oc_get_SWR : called\n");
 
-while(ocp->to_cp != 0) msleep(1);	/* wait for prev. cmd to clear */
-ocp->to_cp = 'Q';
-while(ocp->to_cp != 0) msleep(1);	/* wait until bytes are received */
+if (write (oc_serhandle->port, &c, 1) != 1)
+    printf("OC    : Error sending 'QUERY' command.\n");
+
+if (oc_read (oc_serhandle, ocp->S, 5, 0) != 5)
+    return -1;
 
 sim_debug (OCDEB_SWR, &oc_dev,
-	"oc_get_SWR : swreg bytes = 0x%02X 0x%02X 0x%02X 0x%02X 0x%02X\n",
-	ocp->S[0], ocp->S[1], ocp->S[2], ocp->S[3], ocp->S[4]);
+    "oc_get_SWR : swreg bytes = 0x%02X 0x%02X 0x%02X 0x%02X 0x%02X\n",
+    ocp->S[0], ocp->S[1], ocp->S[2], ocp->S[3], ocp->S[4]);
+
+return 0;
 }
 
 /*
@@ -629,7 +782,7 @@ else
 }
 
 /*
- * Function : oc_get_ADR ()
+ * Function : oc_get_ADR()
  * Note     : Get 3 bytes (up to 22 bit switche information as ADDRESS) and
  *            convert it into a 32 bit unsigned integer.
  * 	      A mask is applied for the target cpu address range.
@@ -646,25 +799,17 @@ A = ocp->S[SWR_16_22_PORT] * 65536 +
     ocp->S[SWR_00_07_PORT];
 
 ocp->inv_addr = FALSE;
-
-if (cpu_model == MOD_1145) {	/* I/O page is not out of address range */
-    A &= 0x0003FFFF; 		/* max 256Kb */
-    if (A >= MEMSIZE && !(A > 0x3DFFF && A < 0x3FFFF) )
-	ocp->inv_addr = TRUE;	
-  }
-else {
-  A &= 0x003FFFFF;       	/* max 4Mb */
-  if (A >= MEMSIZE && !(A > 0x3FDFFF && A < 0x3FFFFF))
-    ocp->inv_addr = TRUE;	
-  }
+		/* I/O page is not out of address range */
+A &= 0x003FFFFF;       		/* max 4Mb */
+if (A >= MEMSIZE && !(A > 0x3FDFFF && A < 0x3FFFFF))
+  ocp->inv_addr = TRUE;	
 
 return A;
 }
 
 /*
- * Function : oc_get_DTA ()
- * Note     : Get 3 bytes (16 bit switches information as DATA) and convert
- * 	      it into a 16 bit unsigned integer
+ * Function : oc_get_DTA()
+ * Note     : Convert the data bytes from the received array
  * Returns  : Binary value of data switch settings 
  */
 uint16 oc_get_DTA ()
@@ -685,10 +830,10 @@ return (ocp->S[SWR_08_15_PORT] * 256 + ocp->S[SWR_00_07_PORT]);
  */
 char *oc_read_line_p (char *prompt, char *cptr, int32 size, FILE *stream, int32 do_echo)
 {
-char *tptr = cptr, key_entry = 0, brk = 0;
-struct SERPORT cons0;                                                 
-cons0.port=0;                                                            
-
+char *tptr = cptr, key_entry = 0;
+SERPORT cons0;
+cons0.port = 0;
+ 
 sim_debug (OCDEB_TRC, &oc_dev, "oc_read_line_p : called\n");
 
 if (prompt)
@@ -697,14 +842,14 @@ if (prompt)
 for (;;) {
     if (oc_active) {
       oc_set_master (TRUE);
-      if (oc_get_CON (cptr) == TRUE) {		/* poll console for data */
+      if (oc_get_CON (cptr) == TRUE) { 		/* poll console for data */
           printf ("%s", cptr);
           break;
           }
       }
 
-    if (oc_poll (&cons0, 10000) == TRUE &&	/* wait for data on keyboard */
-        read(0, &key_entry, 1) > 0) {
+    if (oc_poll (&cons0, 10000) == (t_bool)TRUE &&	/* wait for data on keyboard */
+        read (0, &key_entry, 1) > 0) {
         if (key_entry == '\b' && *tptr > *cptr) {	/* backspace */
             *tptr--;
             write (1, &key_entry, 1);	
@@ -713,12 +858,12 @@ for (;;) {
             }
         else {					/* regular character */
             *tptr++ = key_entry;		/* store the character */
-            write (1, &key_entry, 1);		/* echo the entry to crt */
+            write (1, &key_entry, 1);/* echo the entry to crt */
             if ((key_entry == '\n') || (key_entry == '\r'))
                 break;
             }
         }
-    } 	 /* end loop */
+    } 	
 
 for (tptr = cptr; tptr < (cptr + size); tptr++) {	/* remove cr or nl */
     if ((*tptr == '\n') || (*tptr == '\r') ||
@@ -729,10 +874,10 @@ for (tptr = cptr; tptr < (cptr + size); tptr++) {	/* remove cr or nl */
     }
 
 while (isspace (*cptr))
-    cptr++;						/* absorb spaces */
+    cptr++;			/* absorb spaces */
 
 if (*cptr == ';') {
-    if (do_echo)					/* verbose? */
+    if (do_echo)		/* echo comments if -v */
 	printf ("%s> %s\n", do_position(), cptr);
     if (do_echo && sim_log)
 	fprintf (sim_log, "%s> %s\n", do_position(), cptr);
@@ -741,11 +886,173 @@ if (*cptr == ';') {
 
 if (oc_active) {
   oc_set_master (FALSE);
-  if (ocp->HALT)					/* no stray mode flag */
-     stop_cpu = 1;
+  if (ocp->HALT == 1)		/* no stray mode flag */
+      stop_cpu = 1;
+  }
+return cptr;			/* points to begin of cmd or 0*/
+}
+
+/*
+ * Function : oc_read()
+ * Note     : Read bytes in blocking or non blocking mode.
+ * Returns  : 0 or number of bytes read.
+ */
+int oc_read(SERHANDLE ch, char *b, int c, int m)
+{
+  int x;
+  extern int errno;
+  extern struct termios *oc_tty;
+
+  if (m == 0) {
+    oc_tty->c_cc[VMIN] = c;		/* Must read 'c' chars	*/
+    tcsetattr(ch->port, TCSANOW, oc_tty);
+    }
+    
+  if ((x = read(ch->port, b, c)) != c && errno != EAGAIN && errno != EWOULDBLOCK)
+    x = 0;
+    
+  oc_tty->c_cc[VMIN] = 0;		/* reset to previous state	*/
+  tcsetattr(ch->port, TCSANOW, oc_tty);
+
+  return(x);
+}
+
+/*
+ * Function : oc_send_A()
+ * Note     : Send 22 bit information for the ADDRESS LEDs to the real console
+ * 	      ADDRESS Register displays the address of data just examined or
+ * 	      deposited. During a programmed HALT or WAIT instruction, the 
+ * 	      display shows the next instruction address.
+ * Returns  : Nothing
+ */
+void oc_send_A (uint32 A)
+{
+uint8 mask = 0, cmd[4];
+int r;
+
+sim_debug(OCDEB_TRC, &oc_dev, "oc_send_A : raw address %06X\n", A);
+
+if (MMR0 & MMR0_MME) {
+  mask = 0x03;
+  if (MMR3 & MMR3_M22E)
+    mask = 0x3F;
   }
 
-return cptr;					/* points to begin of cmd or 0*/
+cmd[0] = 'A';
+cmd[1] = (uint8)((A >> 16) & mask) ;
+cmd[2] = (uint8)((A >>  8) & 0xFF) ;
+cmd[3] = (uint8) (A & 0xFF);
+
+if ((r = write (oc_serhandle->port, cmd, 4)) != 4)
+  printf("OC    : Error sending ADDRESS to the console (e=%d, wr=%d)\n",
+	 errno, r);
+}
+
+/*
+ * Function : oc_send_AD()
+ * Note     : Display current address/data on the operator console.
+ * Returns  : Nothing
+ */
+/*
+ * ** Send single Addres & Data to processor.
+ * */
+void oc_send_AD (uint32 A, uint16 D)
+{
+uint8 mask = 0, cmd[6];
+int r;
+
+sim_debug(OCDEB_TRC, &oc_dev, "oc_send_AD : called\n");
+
+if (MMR0 & MMR0_MME) {
+  mask = 0x03;
+  if (MMR3 & MMR3_M22E)
+    mask = 0x3F;
+  }
+
+cmd[0] = 'B';
+cmd[1] = (uint8)((A >> 16) & mask) ;
+cmd[2] = (uint8)((A >> 8) & 0xFF) ;
+cmd[3] = (uint8) (A & 0xFF);
+cmd[4] = (uint8)((D >> 8) & 0xFF) ;
+cmd[5] = (uint8) (D & 0xFF);
+
+sim_debug(OCDEB_UPD, &oc_dev, "oc_send_AD : A:0x%06X D:0x%04X\n", A, D);
+if ((r = write (oc_serhandle->port, cmd, 6)) != 6)
+  printf("OC    : Error sending ADDRES & DATA to the console (e=%d, wr=%d)\n",
+	 errno, r);
+}
+
+/*
+ * Function : oc_send_ADS()
+ * Note     : Display current address/data/status on the operator console.
+ * Returns  : Nothing
+ */
+void oc_send_ADS (void)
+{
+uint8 mask = 0, cmd[8];
+uint32 A;
+uint16 D;
+int r;
+
+sim_debug(OCDEB_TRC, &oc_dev, "oc_send_ADS : called\n");
+
+switch (ocp->S[INP5] & DSPA_MASK) {
+    case DSPA_PROGPHY : A = ocp->A[ADDR_PRGPA]&0x3FFFFF;break;
+    case DSPA_CONSPHY : A = ocp->A[ADDR_CONPA]&0x3FFFFF;break;
+    case DSPA_KERNEL_D: A = ocp->A[ADDR_KERND]&0xFFFF; break;
+    case DSPA_KERNEL_I: A = ocp->A[ADDR_KERNI]&0xFFFF; break;
+    case DSPA_SUPER_D : A = ocp->A[ADDR_SUPRD]&0xFFFF; break;
+    case DSPA_SUPER_I : A = ocp->A[ADDR_SUPRI]&0xFFFF; break;
+    case DSPA_USER_D  : A = ocp->A[ADDR_USERD]&0xFFFF; break;
+    case DSPA_USER_I  : A = ocp->A[ADDR_USERI]&0xFFFF; break;
+    }
+switch ((ocp->S[INP5] >> 3) & DSPD_MASK) {
+    case DSPD_DATA_PATHS : D = ocp->D[DISP_SHFR]; break;
+    case DSPD_BUS_REG    : D = ocp->D[DISP_BR];   break;
+    case DSPD_MU_ADRS    : D = ocp->D[DISP_FPP];  break;
+    case DSPD_DISP_REG   : D = ocp->D[DISP_DR];   break;
+    }
+
+if (MMR0 & MMR0_MME) {
+    mask = 0x03;
+    if (MMR3 & MMR3_M22E)
+        mask = 0x3F;
+    }
+
+cmd[0] = 'U';
+cmd[1] = (uint8)((A >> 16) & mask);
+cmd[2] = (uint8)((A >>  8) & 0xFF);
+cmd[3] = (uint8) (A & 0xFF);
+cmd[4] = (uint8)((D >> 8) & 0xFF);
+cmd[5] = (uint8) (D & 0xFF);
+cmd[6] = ocp->PORT1;
+cmd[7] = ocp->PORT2;
+
+sim_debug(OCDEB_UPD, &oc_dev, "oc_send_ADS : A:0x%06X D:0x%04X\n", A, D);
+if ((r = write (oc_serhandle->port, cmd, 8)) != 8)
+  printf("OC    : Error sending ADDRESS/DATA & STATUS to the console (e=%d, wr=%d)\n",
+	 errno, r);
+}
+
+/*
+ * Function : oc_send_S()
+ * Note     : Send function/status for those LEDs to the console.
+ * Returns  : Nothing
+ */
+void oc_send_S (void)
+{
+uint8 cmd[4];
+
+sim_debug(OCDEB_TRC, &oc_dev, "oc_send_S : called\n");
+
+cmd[0] = 'F';				/* cmd to use */
+cmd[1] = ocp->PORT1;
+cmd[2] = ocp->PORT2;
+
+sim_debug(OCDEB_STS, &oc_dev, "oc_send_S : raw byte1 0x%X, byte2 : 0x%X\n",
+        cmd[0], cmd[1]);
+if (write (oc_serhandle->port, cmd, 3) != 3)
+    printf("OC    : Error sending STATUS to the console\n");
 }
 
 /*
@@ -761,37 +1068,37 @@ oc_set_port1 (FSTS_MASTER, flag);
 
 /*
  * Function : oc_set_mmu()
- * Note     : Set the 16/18/22 bit or VIRTUAL or off on the console.
+ * Note     : Toggle the 16/18/22 bit on the console.
  * Returns  : Nothing
  */
 void oc_set_mmu (void)
 {
-uint8 map = 16;
+uint8 status, map = 16;
 
-if (!oc_active || cpu_model != MOD_1170)  return;
- 
-oc_set_port2 (FSTS_1170_16BIT, 0);
-oc_set_port2 (FSTS_1170_18BIT, 0);
-oc_set_port2 (FSTS_1170_22BIT, 0);
-  
-if (ocp->MMR0 & MMR0_MME) {
+if (!oc_active) return;
+
+oc_set_port2 (FSTS_16BIT, 0);
+oc_set_port2 (FSTS_18BIT, 0);
+oc_set_port2 (FSTS_22BIT, 0);
+
+	/* determine mapping from current processor state */
+if (MMR0 & MMR0_MME) {
     map = 18;
-    if (ocp->MMR3 & MMR3_M22E)
-        map = 22;
+    if (MMR3 & MMR3_M22E)
+      map = 22;
     }
 
 switch (map) {
-  case 16 : oc_set_port2 (FSTS_1170_16BIT, 1); break;
-  case 18 : oc_set_port2 (FSTS_1170_18BIT, 1); break;
-  case 22 : oc_set_port2 (FSTS_1170_22BIT, 1); break;
-  }
+    case 16 : oc_set_port2 (FSTS_16BIT, 1); break;
+    case 18 : oc_set_port2 (FSTS_18BIT, 1); break;
+    case 22 : oc_set_port2 (FSTS_22BIT, 1); break;
+    }
 }
 
 /*
  * Function : oc_set_ringprot()
  * Note     : Manage the ring protection leds on the console
- * 	      KERNEL, SUPER and USER *LEDs* are coded in
- *              2 bits on the console
+ * 	       KERNEL, SUPER and USER *LEDs* are coded in 2 bits on the console
  * 	      hardware, modes 
  * 	        "00" - KERNEL LED on
  * 	        "01" - SUPER LED on
@@ -810,38 +1117,78 @@ if (value == MD_USR) status &= 0xFF;
 ocp->PORT1 = status;
 }
 
+#if defined(OPCON_THR)
 /*
- * Function : oc_send_CMD()
- * Note     : Send a single command to the console task.
+ * Function : oc_thread
+ * Note     : Service routine for the threading solution
+ *            If HALT is set, this service does mostly sleep.
+ * Returns  : 0 or 1
+*/
+void *oc_thread(void *end_thr)
+{
+sim_debug (OCDEB_TRC, &oc_dev, "oc_run_thread : called\n");
+
+ocp->A[0] = 0xFF;		/* signal main thread */
+
+while (*(int*)end_thr == 0) {
+    if (!ocp->HALT)		/* if 0, we are not interactive */
+        oc_console ();
+    else
+        msleep(20);/* main trhead is handling interactive updates, don't hog the cpu */
+    }
+return ((void *)0);
+}
+#endif
+
+/*
+ * Function : oc_toggle_ack()
+ * Note     : Send the clear-toggle command to the operator console
  * Returns  : Nothing
  */
-void oc_send_CMD(uint8 cmd, uint8 mask)
+void oc_toggle_ack (uint8 mask)
 {
-switch(cmd) {
-  case 'A' : sim_debug(OCDEB_TRC, &oc_dev, "oc_send_CMD (A): address %08o\n",
-		ocp->act_addr);
-	     break;
-  case 'B' : sim_debug(OCDEB_UPD, &oc_dev,
-		"oc_send_CMD (A&D) : A:0x%08o D:0x%06o\n", 
-		ocp->act_addr, ocp->act_data);
-	     break;
-  case 'C' : sim_debug (OCDEB_TRC, &oc_dev, "oc_send_CMD (clr all toggles)\n");
-	     break;
-  case 'F' : sim_debug(OCDEB_STS, &oc_dev, 
-		"oc_send_CMD (status) : b1:0x%02X, b2:0x%02X\n",
-		ocp->PORT1, ocp->PORT2);
-	     break;
-  case 'O' : sim_debug (OCDEB_TRC, &oc_dev, "oc_send_CMD : called, mask = %d\n",
-  		mask);
-             ocp->ACK = mask;
-             break;
-  case 'R' : sim_debug (OCDEB_TRC, &oc_dev, "oc_send_CMD (clr HALT & clr all toggles)\n");
-	     break;
-  default  :
-	     break;
-  }
-while(ocp->to_cp != 0) msleep(10);
-ocp->to_cp = cmd;
+uint8 cmd[3];
+int r;
+char *msg;
+
+sim_debug (OCDEB_TRC, &oc_dev, "oc_toggle_ack : called, mask = 0x%x\n", mask);
+
+#ifdef DEBUG_OC
+switch (mask) {
+    case ACK_LOAD  : msg = "clear LOAD request sent to console\n";	break;
+    case ACK_EXAM  : msg = "clear EXAM request sent to console\n";	break;
+    case ACK_DEPO  : msg = "clear DEP request sent to console\n";	break;
+    case ACK_CONT  : msg = "clear CONT request sent to console\n";	break;
+    case ACK_START : msg = "clear START request sent to console\n";	break;
+    }
+sim_debug (OCDEB_TRC, &oc_dev, msg);
+#endif
+
+/*
+ * port number where toggles are defined  ** IMPLEMENTATION SPECIFIC
+ */
+cmd[0] = 'c';
+cmd[1] = (uint8)(INP3 + 0x30);
+cmd[2] = mask;
+
+if ((r = write (oc_serhandle->port, cmd, 3)) != 3)
+    printf ("OC    : Error sending CLEAR_TOGGLE to the console (err=%d,r=%d)\n",
+	 errno, r);
+}
+
+/*
+ * Function : oc_toggle_clear()
+ * Note     : Send the clear-ALL-toggles command to the REAL CONSOLE
+ * Returns  : Nothing
+ */
+void oc_toggle_clear (void)
+{
+uint8 c = 'i';
+
+sim_debug (OCDEB_TRC, &oc_dev, "oc_toggle_clear : called\n");
+
+if (write (oc_serhandle->port, &c, 1) != 1)
+    printf("OC    : Error sending CLEAR_ALL_TOGGLES to the console\n");
 }
 
 /*
@@ -852,11 +1199,7 @@ ocp->to_cp = cmd;
  */
 void oc_set_wait (t_bool flag)
 {
-if (cpu_model == MOD_1145) 
-  oc_set_port1 (FSTS_1145_PAUSE, !flag);
-else
-  oc_set_port1 (FSTS_1170_PAUSE, !flag);
-
+oc_set_port1 (FSTS_PAUSE, !flag);
 oc_set_port1 (FSTS_RUN, flag);
 }
 

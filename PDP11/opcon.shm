@@ -25,12 +25,13 @@
    or other dealings in this Software without prior written
    authorization from the Author or Authors.
 
-   14-Mar-14    EG      added rom address range check, changed interval
-   10-Mar-14    EG      oc_get_CON : add inv addr check 
+   21-sep-18    EG	Remove 11/45 code, cleanup
+   14-mar-14    EG      Added rom address range check, changed interval
+   10-mar-14    EG      oc_get_CON : add inv addr check 
                         oc_extract_address : address masking & inv addr flag
                         added function oc_get_rotary; fix load adrs cmd not -
                         to generate 'dep pc xxx'.
-   10-Feb-14    EG      Rewrite, based on original realcons.c code.
+   10-feb-14    EG      Rewrite, based on original realcons.c code.
 */
 
 /* 
@@ -167,11 +168,11 @@ char *tptr;
 uint32 H, K, i;
 t_stat r;
 SERHANDLE p;
-key_t oc_key = 201702;
+key_t oc_key = 201809;
 
 sim_debug (OCDEB_TRC, &oc_dev, "oc_attach : called\n");
 
-if (cpu_model != MOD_1145 && cpu_model != MOD_1170) {
+if (cpu_model != MOD_1170) {
   printf ("OC    : No support for the current cpu model.\n");
   return SCPE_OK;
   } 
@@ -183,6 +184,7 @@ if ((tptr = strchr (cptr, '=')) == NULL)
     return SCPE_ARG;
 *tptr++; 
 
+/* Test if the port is usable */
 if ((p = sim_open_serial (tptr, NULL, &r)) == ((SERHANDLE)(void *)-1) ||
      r != SCPE_OK) {	/* port usable? */
     sim_close_serial (p);
@@ -233,23 +235,14 @@ if (ocp->to_cp != 0) {				/* sub task did not start     */
 oc_active = TRUE;					/* Mark as available  */
 oc_get_SWR ();				  	/* request console key state  */
 
-if (cpu_model == MOD_1145) {		    /* detect power & halt key position	*/
-    K = ocp->S[INP3] & SW_PL_1145; 
-    H = ocp->S[INP5] & SW_HE_1145;
-    }
-else {
-    K = ocp->S[INP5] & SW_PL_1170;
-    H = ocp->S[INP5] & SW_HE_1170;
-    }
-
 if (!sim_quiet)
     printf ("OC    : Operator console KEY switch set to ");
-if (!K) {
+if (!(ocp->S[INP5] & SW_PL_1170)) {
     if (!sim_quiet) {
 	printf ("POWER\n");
         printf ("OC    : Operator console ENABLE/HALT switch set to ");
 	}
-    if (!H) {				/* HALT key is up */
+    if (!(ocp->S[INP5] & SW_HE_1170)) { /* HALT key is up */
 	ocp->HALT = 0;
 	if (!sim_quiet)
 	    printf ("'ENABLE'\n");
@@ -419,11 +412,7 @@ return FALSE;
  */
 void oc_clear_halt (void)
 {
-if (cpu_model == MOD_1145)
-  ocp->S[INP5] = ocp->S[INP5] & (~SW_HE_1145);
-else
-  ocp->S[INP5] = ocp->S[INP5] & (~SW_HE_1170);
- 
+ocp->S[INP5] = ocp->S[INP5] & (~SW_HE_1170);
 oc_send_CMD('R', 0);	/* clear all toggles and clear HALT */
 }
 
@@ -467,10 +456,7 @@ switch (ocp->fm_cp) {
 	    strcpy (cptr, "step\n");		/* STEP when HALT is down */
 	else {
 	    strcpy (cptr, "continue\n");
-	    if (cpu_model == MOD_1145)
-	        oc_set_port1 (FSTS_1145_ADRSERR, 0);
-	    else
-	        oc_set_port1 (FSTS_1170_ADRSERR, 0);
+	    oc_set_port1 (FSTS_ADRSERR, 0);
 	    oc_clear_halt ();
 	    }
 	return TRUE;
@@ -489,10 +475,7 @@ switch (ocp->fm_cp) {
 		}
 	    }
 	if (ocp->inv_addr) {	/* above mem range? */
-	    if (cpu_model == MOD_1145)
-		oc_set_port1 (FSTS_1145_ADRSERR, 1);
-	    else
-		oc_set_port1 (FSTS_1170_ADRSERR, 1);
+	    oc_set_port1 (FSTS_ADRSERR, 1);
 	    strcpy (cptr, ";address out of defined range\n");
 	    }
 	else {	/* no deposits in boot rom address range or device roms */
@@ -518,10 +501,7 @@ switch (ocp->fm_cp) {
 	oc_send_CMD ('O', ACK_DEPO);		/* ack */
 	break;
     case 'l' :					/* LOAD ADDRS */
-	if (cpu_model == MOD_1145)
-	  oc_set_port1 (FSTS_1145_ADRSERR, 0);
-	else
-	  oc_set_port1 (FSTS_1170_ADRSERR, 0);
+	oc_set_port1 (FSTS_ADRSERR, 0);
         oc_get_SWR ();	/* get actual switch settings */
 	ocp->first_dep = TRUE;
 	ocp->first_exam = TRUE;
@@ -533,8 +513,7 @@ switch (ocp->fm_cp) {
     case 's' :					/* START */
 	if (ocp->HALT == 2) {
 	    strcpy (cptr, "reset all\n");	/* RESET when HALT is down */
-	    if (cpu_model == MOD_1170)
-		oc_set_port1 (FSTS_1170_ADRSERR, 0);
+	    oc_set_port1 (FSTS_ADRSERR, 0);
 	    }
 	else
 	    sprintf (cptr, "run %08o\n", ocp->act_addr);
@@ -556,10 +535,7 @@ switch (ocp->fm_cp) {
 	        }
 	    }
 	if (ocp->inv_addr) {
-	    if (cpu_model == MOD_1145)
-	      oc_set_port1 (FSTS_1145_ADRSERR, 1);
-	    else
-	      oc_set_port1 (FSTS_1170_ADRSERR, 1);
+	    oc_set_port1 (FSTS_ADRSERR, 1);
 	    strcpy (cptr, ";address out of defined range\n");
 	    }
 	else {
@@ -647,16 +623,10 @@ A = ocp->S[SWR_16_22_PORT] * 65536 +
 
 ocp->inv_addr = FALSE;
 
-if (cpu_model == MOD_1145) {	/* I/O page is not out of address range */
-    A &= 0x0003FFFF; 		/* max 256Kb */
-    if (A >= MEMSIZE && !(A > 0x3DFFF && A < 0x3FFFF) )
-	ocp->inv_addr = TRUE;	
-  }
-else {
-  A &= 0x003FFFFF;       	/* max 4Mb */
-  if (A >= MEMSIZE && !(A > 0x3FDFFF && A < 0x3FFFFF))
-    ocp->inv_addr = TRUE;	
-  }
+/* I/O page is not out of address range */
+A &= 0x003FFFFF;       	/* max 4Mb */
+if (A >= MEMSIZE && !(A > 0x3FDFFF && A < 0x3FFFFF))
+  ocp->inv_addr = TRUE;	
 
 return A;
 }
@@ -768,11 +738,11 @@ void oc_set_mmu (void)
 {
 uint8 map = 16;
 
-if (!oc_active || cpu_model != MOD_1170)  return;
+if (!oc_active)  return;
  
-oc_set_port2 (FSTS_1170_16BIT, 0);
-oc_set_port2 (FSTS_1170_18BIT, 0);
-oc_set_port2 (FSTS_1170_22BIT, 0);
+oc_set_port2 (FSTS_16BIT, 0);
+oc_set_port2 (FSTS_18BIT, 0);
+oc_set_port2 (FSTS_22BIT, 0);
   
 if (ocp->MMR0 & MMR0_MME) {
     map = 18;
@@ -781,9 +751,9 @@ if (ocp->MMR0 & MMR0_MME) {
     }
 
 switch (map) {
-  case 16 : oc_set_port2 (FSTS_1170_16BIT, 1); break;
-  case 18 : oc_set_port2 (FSTS_1170_18BIT, 1); break;
-  case 22 : oc_set_port2 (FSTS_1170_22BIT, 1); break;
+  case 16 : oc_set_port2 (FSTS_16BIT, 1); break;
+  case 18 : oc_set_port2 (FSTS_18BIT, 1); break;
+  case 22 : oc_set_port2 (FSTS_22BIT, 1); break;
   }
 }
 
@@ -852,11 +822,7 @@ ocp->to_cp = cmd;
  */
 void oc_set_wait (t_bool flag)
 {
-if (cpu_model == MOD_1145) 
-  oc_set_port1 (FSTS_1145_PAUSE, !flag);
-else
-  oc_set_port1 (FSTS_1170_PAUSE, !flag);
-
+oc_set_port1 (FSTS_PAUSE, !flag);
 oc_set_port1 (FSTS_RUN, flag);
 }
 

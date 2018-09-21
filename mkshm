@@ -2,11 +2,12 @@
 set -x
 gcc -o console PDP11/console.c -I . -I ./PDP11
 #
+cp PDP11/opcon.shm PDP11/opcon.c
 gcc -std=c99 -U__STRICT_ANSI__ -finline-functions -fgcse-after-reload \
  -fpredictive-commoning -fipa-cp-clone -fno-unsafe-loop-optimizations \
  -fno-strict-overflow -DSIM_GIT_COMMIT_ID=000000001 -I . -I /usr/include/pcap \
  -DSIM_COMPILER="GCC Version: 4.8.5" -D_GNU_SOURCE -DHAVE_DLOPEN=so \
- -DHAVE_GLOB  -DOPCON  \
+ -DHAVE_GLOB  -DOPCON -DOPCON_SHM  \
  PDP11/pdp11_fp.c PDP11/pdp11_cpu.c PDP11/pdp11_dz.c PDP11/pdp11_cis.c \
  PDP11/pdp11_lp.c PDP11/pdp11_rk.c PDP11/pdp11_rl.c PDP11/pdp11_rp.c \
  PDP11/pdp11_rx.c PDP11/pdp11_stddev.c PDP11/pdp11_sys.c PDP11/pdp11_tc.c \
@@ -17,7 +18,7 @@ gcc -std=c99 -U__STRICT_ANSI__ -finline-functions -fgcse-after-reload \
  PDP11/pdp11_rf.c PDP11/pdp11_dl.c PDP11/pdp11_ta.c PDP11/pdp11_rc.c \
  PDP11/pdp11_kg.c PDP11/pdp11_ke.c PDP11/pdp11_dc.c PDP11/pdp11_dmc.c \
  PDP11/pdp11_kmc.c PDP11/pdp11_dup.c PDP11/pdp11_rs.c PDP11/pdp11_vt.c \
- PDP11/pdp11_td.c  PDP11/pdp11_io_lib.c  \
+ PDP11/pdp11_td.c  PDP11/pdp11_rom.c PDP11/pdp11_io_lib.c  \
  scp.c sim_console.c sim_fio.c sim_timer.c sim_sock.c sim_tmxr.c sim_ether.c \
  sim_tape.c sim_disk.c sim_serial.c PDP11/opcon.c \
  -DVM_PDP11 -I PDP11 -I . -lm -o pdp11_new -lm -lrt -lpthread -ldl \

@@ -760,35 +760,21 @@ if (oc_active) {
     if (oc_check_halt ()) {
         oc_toggle_clear ();
         oc_set_port1 (FSTS_RUN, 0);
-        if (cpu_model == MOD_1145)
-            oc_set_port1 (FSTS_1145_PAUSE, 1);
-        else
-            oc_set_port1 (FSTS_1170_PAUSE, 1);
+        oc_set_port1 (FSTS_PAUSE, 1);
         return(SCPE_STOP);
         }
     oc_set_port1 (FSTS_RUN, 1);
-    if (cpu_model == MOD_1145) {
-        oc_set_port1 (FSTS_1145_PAUSE, 0);
-        oc_set_port1 (FSTS_1145_ADRSERR, 0);
-        abortval = setjmp (save_env);                           /* set abort hdlr */
-        if ((abortval == TRAP_NXM) ||
-            (abortval == TRAP_ODD) ||
-            (abortval == TRAP_MME))
-            oc_set_port1 (FSTS_1145_ADRSERR, 1);
-        }
-    else {
-        oc_set_port1 (FSTS_1170_PAUSE, 0);
-        oc_set_port1 (FSTS_1170_ADRSERR, 0);
-        oc_set_port2 (FSTS_1170_PARHI, 0);
-        oc_set_port2 (FSTS_1170_PARLO, 0);
-        abortval = setjmp (save_env);                           /* set abort hdlr */
-        if (abortval == TRAP_PAR)
-            oc_set_port1 (FSTS_1170_PARERR, 1);
-        if ((abortval == TRAP_NXM) ||
-            (abortval == TRAP_ODD) ||
-            (abortval == TRAP_MME))
-            oc_set_port1 (FSTS_1170_ADRSERR, 1);
-        }
+    oc_set_port1 (FSTS_PAUSE, 0);
+    oc_set_port1 (FSTS_ADRSERR, 0);
+    oc_set_port2 (FSTS_PARHI, 0);
+    oc_set_port2 (FSTS_PARLO, 0);
+    abortval = setjmp (save_env);                           /* set abort hdlr */
+    if (abortval == TRAP_PAR)
+        oc_set_port1 (FSTS_PARERR, 1);
+    if ((abortval == TRAP_NXM) ||
+        (abortval == TRAP_ODD) ||
+        (abortval == TRAP_MME))
+        oc_set_port1 (FSTS_ADRSERR, 1);
     }
 else
 #endif
@@ -835,8 +821,7 @@ else {
             if (oc_active) {
                 oc_set_mmu ();
                 oc_set_ringprot (cm);
-                if (cpu_model == MOD_1170)
-                    oc_set_port1 (FSTS_1170_ADRSERR, 1);
+                oc_set_port1 (FSTS_ADRSERR, 1);
                }
 #endif
             setTRAP (TRAP_RED);
@@ -950,10 +935,7 @@ while (reason == 0)  {
             oc_set_wait (FALSE);
             oc_set_master (TRUE);
             oc_set_ringprot (cm);
-            if (cpu_model == MOD_1145)
-                oc_set_port1 (FSTS_1145_ADRSERR, 0);
-            else
-                oc_set_port1 (FSTS_1170_ADRSERR, 0);
+            oc_set_port1 (FSTS_ADRSERR, 0);
             }
 #endif
 
@@ -3605,10 +3587,8 @@ if (oc_active) {
     oc_set_wait (FALSE);
     oc_set_mmu ();
     oc_set_ringprot (cm);
-    if (cpu_model == MOD_1170) {
-        oc_set_port1 (FSTS_1170_PARERR,  0);
-        oc_set_port1 (FSTS_1170_ADRSERR, 0);
-        }
+    oc_set_port1 (FSTS_PARERR,  0);
+    oc_set_port1 (FSTS_ADRSERR, 0);
     }
 #endif
 

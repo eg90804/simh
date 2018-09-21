@@ -75,41 +75,21 @@ void oc_send_ADS(int oc_fd, OC_ST *ocp)
   uint32 A;
   uint16 D;
 
-  if (ocp->cpu_model == MOD_1145) {
-    switch ((ocp->S[INP3] >> 4) & DSPA_MASK) {
-	case DSPA_PROGPHY : A = ocp->A[ADDR_PRGPA] & 0x3FFFF;break;
-	case DSPA_CONSPHY : A = ocp->A[ADDR_CONPA] & 0x3FFFF;break;
-	case DSPA_KERNEL_D: A = ocp->A[ADDR_KERND] & 0xFFFF; break;
-	case DSPA_KERNEL_I: A = ocp->A[ADDR_KERNI] & 0xFFFF; break;
-	case DSPA_SUPER_D : A = ocp->A[ADDR_SUPRD] & 0xFFFF; break;
-	case DSPA_SUPER_I : A = ocp->A[ADDR_SUPRI] & 0xFFFF; break;
-	case DSPA_USER_D  : A = ocp->A[ADDR_USERD] & 0xFFFF; break;
-	case DSPA_USER_I  : A = ocp->A[ADDR_USERI] & 0xFFFF; break;
-	}
-    switch ((ocp->S[INP3] >> 2) & DSPD_MASK) {
-	case DSPD_DATA_PATHS : D = ocp->D[DISP_SHFR]; break;
-	case DSPD_BUS_REG    : D = ocp->D[DISP_BR];   break;
-	case DSPD_MU_ADRS    : D = ocp->D[DISP_FPP];  break;
-	case DSPD_DISP_REG   : D = ocp->D[DISP_DR];   break;
-	}
+  switch (ocp->S[INP5] & DSPA_MASK) {
+    case DSPA_PROGPHY : A = ocp->A[ADDR_PRGPA] & 0x3FFFFF; break;
+    case DSPA_CONSPHY : A = ocp->A[ADDR_CONPA] & 0x3FFFFF; break;
+    case DSPA_KERNEL_D: A = ocp->A[ADDR_KERND] & 0xFFFF;   break;
+    case DSPA_KERNEL_I: A = ocp->A[ADDR_KERNI] & 0xFFFF;   break;
+    case DSPA_SUPER_D : A = ocp->A[ADDR_SUPRD] & 0xFFFF;   break;
+    case DSPA_SUPER_I : A = ocp->A[ADDR_SUPRI] & 0xFFFF;   break;
+    case DSPA_USER_D  : A = ocp->A[ADDR_USERD] & 0xFFFF;   break;
+    case DSPA_USER_I  : A = ocp->A[ADDR_USERI] & 0xFFFF;   break;
     }
-  else {
-    switch (ocp->S[INP5] & DSPA_MASK) {
-	case DSPA_PROGPHY : A = ocp->A[ADDR_PRGPA] & 0x3FFFFF; break;
-	case DSPA_CONSPHY : A = ocp->A[ADDR_CONPA] & 0x3FFFFF; break;
-	case DSPA_KERNEL_D: A = ocp->A[ADDR_KERND] & 0xFFFF;   break;
-	case DSPA_KERNEL_I: A = ocp->A[ADDR_KERNI] & 0xFFFF;   break;
-	case DSPA_SUPER_D : A = ocp->A[ADDR_SUPRD] & 0xFFFF;   break;
-	case DSPA_SUPER_I : A = ocp->A[ADDR_SUPRI] & 0xFFFF;   break;
-	case DSPA_USER_D  : A = ocp->A[ADDR_USERD] & 0xFFFF;   break;
-	case DSPA_USER_I  : A = ocp->A[ADDR_USERI] & 0xFFFF;   break;
-	}
-    switch ((ocp->S[INP5] >> 3) & DSPD_MASK) {
-	case DSPD_DATA_PATHS : D = ocp->D[DISP_SHFR]; break;
-	case DSPD_BUS_REG    : D = ocp->D[DISP_BR];   break;
-	case DSPD_MU_ADRS    : D = ocp->D[DISP_FPP];  break;
-	case DSPD_DISP_REG   : D = ocp->D[DISP_DR];   break;
-	}
+  switch ((ocp->S[INP5] >> 3) & DSPD_MASK) {
+    case DSPD_DATA_PATHS : D = ocp->D[DISP_SHFR]; break;
+    case DSPD_BUS_REG    : D = ocp->D[DISP_BR];   break;
+    case DSPD_MU_ADRS    : D = ocp->D[DISP_FPP];  break;
+    case DSPD_DISP_REG   : D = ocp->D[DISP_DR];   break;
     }
 
   if (ocp->MMR0 & MMR0_MME) {
@@ -224,10 +204,7 @@ void oc_read_RTR(int oc_fd, OC_ST *ocp)
   if (oc_read(oc_fd, &c, 1, 0) != 1)
     oc_exit(oc_fd, ocp, "Exit : oc_read_RTR - 2");
 
-  if (ocp->cpu_model == MOD_1145)
-    ocp->S[INP3] = c;
-  else
-    ocp->S[INP5] = c;
+  ocp->S[INP5] = c;
 }
 
 /*
@@ -278,7 +255,7 @@ void oc_ack_ONE(int oc_fd, OC_ST *ocp)
 int main(int ac, char **av)
 {
   int x, oc_fd, oc_shmid, c_cnt = 0;
-  key_t	oc_key = 201702;
+  key_t	oc_key = 201809;
   char c, cmd_buf[2];
   OC_ST *ocp;
   struct termios savetty;
@@ -378,8 +355,6 @@ int main(int ac, char **av)
 
   cmd_buf[0] = 'p';
   cmd_buf[1] = '5';
-  if (ocp->cpu_model == MOD_1145)
-     cmd_buf[1] = '4';
 
   if (write(oc_fd, cmd_buf, 2) != 2) {
     printf("OCC : failed to send cpu type (errno = %d)\n", errno);
@@ -395,7 +370,7 @@ int main(int ac, char **av)
 **  We are in business, let the other side know we are ready.
 **  The 'to_cp' field was set by SIMH for observation
 */
-  ocp->A[ADDR_PRGPA] = 0x002017;
+  ocp->A[ADDR_PRGPA] = 0x002018;
   ocp->D[DISP_SHFR]  = 0x0ED0;
   oc_send_ADS(oc_fd, ocp);
   msleep(10);
