@@ -1,7 +1,8 @@
 # Quick command for ttylinux
 set -x
 
-cp PDP11/opcon.thread PDP11/opcon.c
+cp PDP11/opcon.thread PDP11/opcon.c #code for threading & direct serial port
+
 gcc -std=gnu99 -U__STRICT_ANSI__  -O2 -finline-functions -fgcse-after-reload \
  -fpredictive-commoning -fipa-cp-clone -fno-unsafe-loop-optimizations\
  -fno-strict-overflow -Wno-unused-result\
@@ -24,3 +25,5 @@ gcc -std=gnu99 -U__STRICT_ANSI__  -O2 -finline-functions -fgcse-after-reload \
   sim_tape.c sim_disk.c sim_serial.c sim_video.c sim_imd.c sim_card.c\
   -DVM_PDP11 -I PDP11 -DHAVE_TAP_NETWORK -DUSE_NETWORK\
   -o pdp11_new -lm -lrt -lpthread -ldl 
+
+rm PDP11/opcon.c

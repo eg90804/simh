@@ -42,12 +42,12 @@
 //#define DEBUG_OC 1 				/* enable/disable debug */
 
 /*
- * Model to use.
+ * Model to use, to be defined from compile command.
  *   Define OPCON_SHM for shared memory model,
  *   Define OPCON_THR for multi thread model
  *   Define OPCON_SER for direct serial model.
  */
-#define OPCON_SHM				/* shm model */
+//#define OPCON_SHM				/* shm model */
 //#define OPCON_THR				/* pthread model */
 //#define OPCON_SER				/* direct serial model */
 

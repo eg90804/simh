@@ -273,7 +273,7 @@ else
 	printf ("LOCK\n");
 
 #if defined(OPCON_THR)
-if ((r = pthread_create(&ocp->.t_thr, NULL, &oc_thread, (void *)&ocp->t_end)) != 0) {
+if ((r = pthread_create(&ocp->t_thr, NULL, &oc_thread, (void *)&ocp->t_end)) != 0) {
     fprintf(stderr, "Error creating OC thread, return code %d\n", r);
     free (oc_tty); free(ocp);
     sim_close_serial (oc_serhandle);
@@ -1120,8 +1120,8 @@ ocp->PORT1 = status;
 #if defined(OPCON_THR)
 /*
  * Function : oc_thread
- * Note     : Service routine for the threading solution
- *            If HALT is set, this service does mostly sleep.
+ * Note     : Service routine for the threading solution.
+ *            If HALT is set, this service mostly sleeps.
  * Returns  : 0 or 1
 */
 void *oc_thread(void *end_thr)
@@ -1134,7 +1134,7 @@ while (*(int*)end_thr == 0) {
     if (!ocp->HALT)		/* if 0, we are not interactive */
         oc_console ();
     else
-        msleep(20);/* main trhead is handling interactive updates, don't hog the cpu */
+        msleep(20); /* sleep if in interactive mode to avoid cpu hogging */
     }
 return ((void *)0);
 }
