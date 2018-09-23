@@ -1,6 +1,6 @@
 /* opcon.c: Interface to a real operator console
  
-   Copyright (c) 2006-2015, Edward Groenenberg & Henk Gooijen
+   Copyright (c) 2006-2018, Edward Groenenberg & Henk Gooijen
 
    Permission is hereby granted, free of charge, to any person obtaining a
    copy of this software and associated documentation files (the "Software"),
@@ -26,6 +26,8 @@
    authorization from the Author or Authors.
 
    21-sep-18    EG	Remove 11/45 code, cleanup
+   27-jan-17    EG      Merge serial & threading together (compile time switch)
+   17-jan-17    EG      Pthreading version, rename some functions
    14-mar-14    EG      Added rom address range check, changed interval
    10-mar-14    EG      oc_get_CON : add inv addr check 
                         oc_extract_address : address masking & inv addr flag
@@ -34,15 +36,17 @@
    10-feb-14    EG      Rewrite, based on original realcons.c code.
 */
 
-/* 
+/* SIMH integration
  * oc_attach()		: attach device (initialize link)
  * oc_detach()		: detach device (close link)
  * oc_help()		: Generic help
  * oc_help_attach()	: Help for attach command
+ * oc_read_line_p()	: get command (keyboard or console)
  * oc_reset()		: device reset
  * oc_show()		: show status of the device (link)
  * oc_svc()		: service routine
- 
+ *
+ * OPCON routines 
  * oc_get_ADR()		: extract address from swr data array
  * oc_get_CON()		: get function command
  * oc_get_DTA()		: extract data from swr data array
@@ -52,7 +56,6 @@
  * oc_set_port1()	: toggle bit on/off in port1 flagbyte
  * oc_set_port2()	: toggle bit on/off in port2 flagbyte
  * oc_set_send_cmd()	: send single byte command
- * oc_read_line_p()	: get command (keyboard or console)
  * oc_set_ringprot()	: toggle ring protection bits (USK)
  *
  * More information can be found in the doc/opcon_doc.txt file
@@ -80,10 +83,10 @@ extern int32 sim_read_serial(SERHANDLE port, char *bufp, int32 count,char *brk);
 extern int32 sim_write_serial (SERHANDLE port, char *bufp, int32 count);
 extern char *do_position (void);
 extern int32 sim_quiet;			/* Quiet output mode */
-extern int32 MMR0, MMR3;
+extern int32 MMR0, MMR3;		/* MMU register */
 
 /* Defines */
-#define msleep(n) usleep(n * 1000)
+#define msleep(n) usleep(n * 1000)	/* Millisecond sleep */
 
 /* Debug levels for the OC device */
 #define OCDEB_CON	      001	/* console input */
@@ -100,6 +103,7 @@ OC_ST	*ocp;				/* OC device control block */
 /* Debug flags & keywords for the OC device */
 DEBTAB oc_debug[] = {
     { "CON", OCDEB_CON },		/* used in oc_get_CON */
+    { "HLT", OCDEB_HLT },               /* used in oc_get_HLT */
     { "STS", OCDEB_STS },		/* used in oc_send_CMD (status) */
     { "SWR", OCDEB_SWR },		/* used in oc_get_SWR */
     { "SVC", OCDEB_SVC },		/* used in oc_svc */
@@ -149,6 +153,7 @@ DEVICE oc_dev = {
     };
 
 t_bool oc_active = FALSE;
+SERHANDLE oc_serhandle;
 uint32 oc_console_pid = 0;
 
 /*   ***   ***   ***   ***   SIMH device integration   ***   ***   ***   ***   *
@@ -167,13 +172,12 @@ t_stat oc_attach (UNIT *uptr, CONST char *cptr)
 char *tptr;
 uint32 H, K, i;
 t_stat r;
-SERHANDLE p;
 key_t oc_key = 201809;
 
 sim_debug (OCDEB_TRC, &oc_dev, "oc_attach : called\n");
 
 if (cpu_model != MOD_1170) {
-  printf ("OC    : No support for the current cpu model.\n");
+  printf ("OC    : Only support for the 11/70 cpu model.\n");
   return SCPE_OK;
   } 
 
@@ -185,13 +189,14 @@ if ((tptr = strchr (cptr, '=')) == NULL)
 *tptr++; 
 
 /* Test if the port is usable */
-if ((p = sim_open_serial (tptr, NULL, &r)) == ((SERHANDLE)(void *)-1) ||
-     r != SCPE_OK) {	/* port usable? */
-    sim_close_serial (p);
-    printf("OC    : Cannot open '%s' for usability check (errno = %d).\n", tptr, errno);
-    return -1;
+if ((oc_serhandle = sim_open_serial (tptr, NULL, &r)) == ((SERHANDLE)(void *)-1)) { /* port usable? */
+    if (r != SCPE_OK) {
+        sim_close_serial (oc_serhandle);
+        printf("OC    : Console link open error (%d).\n", errno);
+        return -1;
+        }
     }
-sim_close_serial(p);		/* close it, else CPB has a problem */
+sim_close_serial(oc_serhandle);	/* close it, else CPB has a problem */
 
 if ((i = shmget(oc_key, sizeof(OC_ST), (IPC_CREAT | 0666))) < 0 ||
     (ocp = (OC_ST *)shmat(i, NULL, 0)) == (OC_ST *)-1)  {
@@ -319,7 +324,6 @@ if (oc_active)
     fputs ("active\n", st);
 else
     fputs ("not active\n", st);
-
 return SCPE_OK;
 }
 
@@ -335,10 +339,11 @@ const char *const text =
 " OC11 Remote Operator Console processor subsystem\n"
 "\n"
 " The OC11 is a pseudo driver and is an interface to the core-IO console\n"
-" processor which allows an original PDP-11 operator console to control the\n"
-" behaviour of SIMH.\n"
+" processor which allows an original PDP-11/70 operator console to control\n"
+" the behaviour of SIMH.\n"
 " Actual address, data & status information is checked for each simulated\n"
-" SIMH instruction. A shared memory segment is used for the exchange.\n"
+" SIMH instruction. Switch settings (and knobs) are queried several times\n"
+" per second.\n"
 ;
 
 fprintf (st, "%s", text);
@@ -362,16 +367,48 @@ const char *const text =
 " The OC driver creates a small shared memory segment for exchange with a 2nd process"
 " which does the actual communication with the the console processor hardware."
 "\n"
-" The ATTACH command specifies which serial port to be used (is passed to the 2nd process).\n"
-" A serial port must be specified as an operating system specific device name.\n"
+" The ATTACH command specifies which serial port to be used.\n"
+" A serial port must be specified as an operating system specific device name\n"
+" or using simh generic serial name. SIMH generic names are of the form\n"
+" serN, where N is from 0 thru one less than the maximum number of serial\n"
+" ports on the local system. The mapping of simh generic port names to OS \n"
+" specific names can be displayed using the following command:\n"
+"\n"
+"   sim> SHOW SERIAL\n"
+"   Serial devices:\n"
+"    ser0   /dev/ttyS0\n"
+"    ser1   /dev/ttyS1\n"
+"\n"
+"   sim> ATTACH OC connect=ser0\n"
+"\n"
+" or equivalently:\n"
 "\n"
 "   sim> ATTACH OC connect=/dev/ttyS1\n"
+"\n"
+" An optional serial port configuration string may be present after the port\n"
+" name.  If present, it must be separated from the port name with a semicolon\n"
+" and has this form:\n"
+"\n"
+"   <rate>-<charsize><parity><stopbits>\n"
+"\n"
+" where:\n"
+"   rate     = communication rate in bits per second\n"
+"   charsize = character size in bits (5-8, including optional parity)\n"
+"   parity   = parity designator (N/E/O/M/S for no/even/odd/mark/space parity)\n"
+"   stopbits = number of stop bits (1, 1.5, or 2)\n"
+"\n"
+" As an example:\n"
+"\n"
+"   9600-8n1\n"
+" The supported rates, sizes, and parity options are host-specific. If\n"
+" a configuration string is not supplied, then the default of 9600-8N1\n"
+" is used.\n"
 "\n"
 " The connection configured for the OC device are unconfigured by:\n"
 "\n"
 "   sim> DETACH OC\n"
 "\n"
-" This will detach the shared segment and destory the 2nd process.\n"
+" This will close the communication subsystem.\n"
 "\n"
 ;
 
@@ -386,7 +423,7 @@ return SCPE_OK;
  */
 const char *oc_description (DEVICE *dptr)
 {
-return "OC11 : Interface to operator console processor";
+return "OC11 : Interface to PDP-11/70 operator console processor";
 }
 
 /*   ***   ***   ***   ***   OPCON routines   ***   ***   ***   ***   */
@@ -437,7 +474,6 @@ oc_send_CMD('R', 0);	/* clear all toggles and clear HALT */
  */
 t_bool oc_get_CON (char *cptr)
 {
-char brk = 0;
 uint16 D;
 uint32 A;
 extern uint16 *M;			/* memory */

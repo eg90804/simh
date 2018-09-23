@@ -1,6 +1,6 @@
 /* opcon.c: Interface to a real operator console
  
-   Copyright (c) 2006-2017, Edward Groenenberg & Henk Gooijen
+   Copyright (c) 2006-2018, Edward Groenenberg & Henk Gooijen
 
    Permission is hereby granted, free of charge, to any person obtaining a
    copy of this software and associated documentation files (the "Software"),
@@ -80,9 +80,9 @@
 #include <sys/time.h>
 #include <sys/types.h>
 #include "sim_defs.h"
-#include "opcon.h"
 #include "scp.h"
 #include "pdp11_defs.h"
+#include "opcon.h"
 #include <ctype.h>
 #include <termio.h>
 #include <sys/ioctl.h>
@@ -94,6 +94,7 @@ extern char *do_position (void);
 extern int32 sim_quiet;			/* Quiet output mode */
 extern int32 MMR0, MMR3;		/* MMU registers */
 
+/* Defines */
 #define msleep(n) usleep(n * 1000);	/* Millisecond sleep */
 
 /* Debug levels for the OC device */
@@ -115,13 +116,13 @@ DEBTAB oc_debug[] = {
     { "STS", OCDEB_STS },		/* used in oc_send_S */
     { "SWR", OCDEB_SWR },		/* used in oc_get_SWR & oc_get_RTR */
     { "SVC", OCDEB_SVC },		/* used in oc_svc */
-    { "TRC", OCDEB_TRC },		/* used in all several call entry points */
+    { "TRC", OCDEB_TRC },		/* used in all major entry points */
     { "UPD", OCDEB_UPD },		/* used in oc_send_AD & oc_send_ADS */
     { 0 }
     };
 
 /* UNIT definition */
-UNIT oc_unit = { UDATA (&oc_svc, UNIT_ATTABLE + UNIT_DISABLE + UNIT_DIS + UNIT_TEXT, 0) };
+UNIT oc_unit = { UDATA (&oc_svc, UNIT_ATTABLE+UNIT_DISABLE+UNIT_DIS, 0) };
 
 /* Modifiers definitions */
 MTAB oc_mod[] = { 
@@ -161,8 +162,8 @@ DEVICE oc_dev = {
     };
 
 t_bool oc_active = FALSE;
-struct termios *oc_tty;
 SERHANDLE oc_serhandle;
+struct termios *oc_tty;
 
 /*   ***   ***   ***   ***   SIMH device integration   ***   ***   ***   ***   */
 
@@ -378,13 +379,14 @@ return SCPE_OK;
 t_stat oc_help (FILE *st, DEVICE *dptr, UNIT *uptr, int32 flag, CONST char *cptr)
 {
 CONST char *const text =
-" OC11 Remote Operator Console processor link\n"
+" OC11 Remote Operator Console processor subsystem\n"
 "\n"
 " The OC11 is a pseudo driver and is an interface to the core-IO console\n"
-" processor which allows an original PDP-11 operator console to control the\n"
-" behaviour of SIMH.\n"
-" Actual address, data & status information is transmitted and switch\n"
-" settings (and knobs) are queried 50 times per second.\n"
+" processor which allows an original PDP-11/70 operator console to control\n"
+" the behaviour of SIMH.\n"
+" Actual address, data & status information is checked for each simulated\n"
+" SIMH instruction. Switch settings (and knobs) are queried several times\n"
+" per second.\n"
 ;
 
 fprintf (st, "%s", text);
@@ -410,7 +412,7 @@ CONST char *const text =
 "\n"
 " The ATTACH command specifies which serial port to be used.\n"
 " A serial port may be specified as an operating system specific device name\n"
-" or useing simh generic serial name. Simh generica names are of the form\n"
+" or using simh generic serial name. SIMH generic names are of the form\n"
 " serN, where N is from 0 thru one less than the maximum number of serial\n"
 " ports on the local system. The mapping of simh generic port names to OS \n"
 " specific names can be displayed using the following command:\n"
@@ -449,7 +451,7 @@ CONST char *const text =
 "\n"
 "   sim> DETACH OC\n"
 "\n"
-" This will close the communication link to the console processor.\n"
+" This will close the communication subsystem.\n"
 "\n"
 ;
 
@@ -464,7 +466,7 @@ return SCPE_OK;
  */
 CONST char *oc_description (DEVICE *dptr)
 {
-return "OC11 : Interface to operator console processor";
+return "OC11 : Interface to PDP-11/70 operator console processor";
 }
 
 /*   ***   ***   ***   ***   OPCON routines   ***   ***   ***   ***   */
@@ -491,7 +493,7 @@ return FALSE;
 void oc_clear_halt (void)
 {
 ocp->S[INP5] = ocp->S[INP5] & (~SW_HE_1170);
-oc_toggle_clear ();
+oc_toggle_clear (); /* clear all toggles and clear HALT */
 ocp->HALT = 0;
 }
 
@@ -664,7 +666,6 @@ switch (c) {
 
 if (ocp->HALT)
     oc_send_S ();			/* update console status leds */
-
 return TRUE;
 }
 
