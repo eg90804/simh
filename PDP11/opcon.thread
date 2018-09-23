@@ -123,7 +123,7 @@ DEBTAB oc_debug[] = {
     };
 
 /* UNIT definition */
-UNIT oc_unit = { UDATA (&oc_svc, UNIT_ATTABLE+UNIT_DISABLE+UNIT_DIS, 0) };
+UNIT oc_unit = { UDATA (&oc_svc, UNIT_ATTABLE + UNIT_DISABLE, 0) };
 
 /* Modifiers definitions */
 MTAB oc_mod[] = { 
@@ -285,6 +285,8 @@ if ((r = pthread_create(&ocp->t_thr, NULL, &oc_thread, (void *)&ocp->t_end)) != 
 while (ocp->A[0] != 0xFF) msleep(2);
 #endif
 
+uptr->flags = uptr->flags | UNIT_ATT;
+
 return SCPE_OK;
 }
 
@@ -311,6 +313,16 @@ sim_cancel(&oc_unit);
 
 sim_close_serial (oc_serhandle);
 free (oc_tty); free(ocp);
+
+if (uptr == NULL)
+    return SCPE_IERR;
+if (!(uptr->flags & UNIT_ATTABLE))			/* attachable? */
+    return SCPE_NOATT;
+if (!(uptr->flags & UNIT_ATT)) {			/* not attached? */
+    return SCPE_OK;					/* allow detach */
+    }
+uptr->flags = uptr->flags & ~(UNIT_ATT | 0);
+
 return r;
 }
 

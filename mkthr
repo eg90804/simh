@@ -3,7 +3,7 @@ set -x
 
 cp PDP11/opcon.thread PDP11/opcon.c #code for threading & direct serial port
 
-gcc -std=gnu99 -U__STRICT_ANSI__  -O2 -finline-functions -fgcse-after-reload \
+gcc -g -std=gnu99 -U__STRICT_ANSI__  -O2 -finline-functions -fgcse-after-reload \
  -fpredictive-commoning -fipa-cp-clone -fno-unsafe-loop-optimizations\
  -fno-strict-overflow -Wno-unused-result\
   -DSIM_GIT_COMMIT_ID=58406800a59ec4f8eb6df05dcaaedd93b72e7790\

@@ -114,7 +114,7 @@ DEBTAB oc_debug[] = {
     };
 
 /* UNIT definition */
-UNIT oc_unit = { UDATA (&oc_svc, UNIT_ATTABLE+UNIT_DISABLE+UNIT_DIS, 0) };
+UNIT oc_unit = { UDATA (&oc_svc, UNIT_ATTABLE + UNIT_DISABLE, 0) };
 
 /* Modifiers definitions */
 MTAB oc_mod[] = { 
