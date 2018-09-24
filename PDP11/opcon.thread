@@ -873,7 +873,7 @@ for (;;) {
             }
         else {					/* regular character */
             *tptr++ = key_entry;		/* store the character */
-            write (1, &key_entry, 1);/* echo the entry to crt */
+//            write (1, &key_entry, 1);/* echo the entry to crt */
             if ((key_entry == '\n') || (key_entry == '\r'))
                 break;
             }

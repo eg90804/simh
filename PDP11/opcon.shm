@@ -264,6 +264,8 @@ else
     if (!sim_quiet)
 	printf ("'LOCK'.\n");
 
+uptr->flags = uptr->flags | UNIT_ATT;
+
 return SCPE_OK;
 }
 
@@ -287,6 +289,15 @@ if (oc_console_pid != 0) {
 
 oc_active = FALSE;				/* clear receiver flag */
 if (ocp != NULL) shmdt((char *)ocp);
+
+if (uptr == NULL)
+    return SCPE_IERR;
+if (!(uptr->flags & UNIT_ATTABLE))                      /* attachable? */
+    return SCPE_NOATT;
+if (!(uptr->flags & UNIT_ATT)) {                        /* not attached? */
+    return SCPE_OK;                                     /* allow detach */
+    }
+uptr->flags = uptr->flags & ~(UNIT_ATT | 0);
 
 return r;
 }
@@ -721,7 +732,7 @@ for (;;) {
             }
         else {					/* regular character */
             *tptr++ = key_entry;		/* store the character */
-            write (1, &key_entry, 1);		/* echo the entry to crt */
+//            write (1, &key_entry, 1);		/* echo the entry to crt */
             if ((key_entry == '\n') || (key_entry == '\r'))
                 break;
             }
