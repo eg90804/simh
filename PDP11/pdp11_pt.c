@@ -43,6 +43,9 @@
 #else                                                   /* PDP-11 version */
 #include "pdp11_defs.h"
 #define PT_DIS          0
+# ifdef REAL_PC05
+# include <termio.h>
+# endif
 #endif
 
 #define PTRCSR_IMP      (CSR_ERR+CSR_BUSY+CSR_DONE+CSR_IE) /* paper tape reader */
@@ -54,6 +57,11 @@ int32 ptr_csr = 0;                                      /* control/status */
 int32 ptr_stopioe = 0;                                  /* stop on error */
 int32 ptp_csr = 0;                                      /* control/status */
 int32 ptp_stopioe = 0;                                  /* stop on error */
+#ifdef REAL_PC05
+int32 pc05_fd = 0;
+int32 pc05_link_set = 0;
+struct termios pc05_tty;
+#endif
 
 t_stat ptr_rd (int32 *data, int32 PA, int32 access);
 t_stat ptr_wr (int32 data, int32 PA, int32 access);
@@ -236,6 +244,11 @@ ptr_csr = (ptr_csr | CSR_ERR) & ~CSR_BUSY;
 if (ptr_csr & CSR_IE) SET_INT (PTR);
 if ((ptr_unit.flags & UNIT_ATT) == 0)
     return IORETURN (ptr_stopioe, SCPE_UNATT);
+#ifdef REAL_PC05
+if ((temp = pc05_getc (ptr_unit.fileref, &ptr_csr)) == EOF) {
+  return SCPE_OK;
+  }
+#else
 if ((temp = getc (ptr_unit.fileref)) == EOF) {
     if (feof (ptr_unit.fileref)) {
         if (ptr_stopioe)
@@ -247,6 +260,7 @@ if ((temp = getc (ptr_unit.fileref)) == EOF) {
     return SCPE_IOERR;
     }
 ptr_csr = (ptr_csr | CSR_DONE) & ~CSR_ERR;
+#endif
 ptr_unit.buf = temp & 0377;
 ptr_unit.pos = ptr_unit.pos + 1;
 return SCPE_OK;
@@ -270,7 +284,11 @@ t_stat ptr_attach (UNIT *uptr, CONST char *cptr)
 t_stat reason;
 
 reason = attach_unit (uptr, cptr);
+#ifdef REAL_PC05
+if ((ptr_unit.flags & UNIT_ATT) == 0 && pc05_set_line(uptr) == 0) {
+#else
 if ((ptr_unit.flags & UNIT_ATT) == 0)
+#endif
     ptr_csr = ptr_csr | CSR_ERR;
 else ptr_csr = ptr_csr & ~CSR_ERR;
 return reason;
@@ -337,12 +355,16 @@ if (ptp_csr & CSR_IE)
     SET_INT (PTP);
 if ((ptp_unit.flags & UNIT_ATT) == 0)
     return IORETURN (ptp_stopioe, SCPE_UNATT);
+#ifdef REAL_PC05
+if (pc05_putc (ptp_unit.buf, ptp_unit.fileref, &ptp_csr) == EOF) {
+#else
 if (putc (ptp_unit.buf, ptp_unit.fileref) == EOF) {
     sim_perror ("PTP I/O error");
     clearerr (ptp_unit.fileref);
     return SCPE_IOERR;
     }
 ptp_csr = ptp_csr & ~CSR_ERR;
+#endif
 ptp_unit.pos = ptp_unit.pos + 1;
 return SCPE_OK;
 }
@@ -365,7 +387,11 @@ t_stat ptp_attach (UNIT *uptr, CONST char *cptr)
 t_stat reason;
 
 reason = attach_unit (uptr, cptr);
+#ifdef REAL_PC05
+if ((ptp_unit.flags & UNIT_ATT) == 0 && pc05_set_line(uptr) == 0) {
+#else
 if ((ptp_unit.flags & UNIT_ATT) == 0)
+#endif
     ptp_csr = ptp_csr | CSR_ERR;
 else ptp_csr = ptp_csr & ~CSR_ERR;
 return reason;
@@ -422,3 +448,88 @@ const char *ptp_description (DEVICE *dptr)
 {
 return "PC11 paper tape punch";
 }
+
+#ifdef REAL_PC05
+/*
+ * This function can be called 2 times, once for the ptr, once for the ptp
+ *
+ * i.e. set ptr enable
+ *      att ptr /dev/tty01
+ *      set ptp enable
+ *      att ptp /dev/tty01
+ */
+int32 pc05_set_line(UNIT *uptr)
+{
+int32 fd = *uptr->fileref->_fileno;
+
+if (pc05_link_set == 1) return 0;	/* Already set */
+
+                                /* Configure port reading             */
+memset(&pc05_tty, 0, sizeof(struct termios));
+if (tcgetattr(fd, &pc05_tty)) {
+    printf("PTP/PTR : failed to get line attributes (%d)\n", errno);
+    return -1;
+    }
+
+fcntl(fd, F_SETFL);
+cfmakeraw(&pc05_tty);
+pc05.c_cc[VMIN] = 0;
+pc05.c_cc[VTIME] = 0;	/* no timeout */
+if (tcsetattr(fd, TCSANOW, &pc05_tty)) {
+    printf("PTP/PTR : failed to set attributes for raw mode\n");
+    return -1;
+    }
+
+pc05_link_set = 1;	/* Flag link set & ready */
+}
+
+int32 pc05_getc(FILE *p, int32 *csr)
+{
+int32 fd = p->_fileno
+unsigned char cmd[4], res[2];
+
+cmd[0] = 0xFF;
+cmd[1] = 'R';
+cmd[2] = 0x00;
+cmd[3] = 0xFF;
+
+if (write(fd, cmd, 4) != 4) {	/* Send command packet */
+    /* set  CSR_ERR */
+    return EOF;
+    }
+
+if (read(fd, res, 2) != 2 ||
+    res[0] != ~res[1]) {	/* Read data byte & 1-compl */
+    /* set CSR_ERR */
+    return EOF;
+    }
+
+*csr = (*csr | CSR_DONE) & ~CSR_ERR;
+return res[0];
+}
+
+int32 pc05_putc (int32 buf, FILE *p, int32 *csr)
+{
+int32 fd = p->_fileno
+unsigned char cmd[4], res[2];
+
+cmd[0] = 0xFF;
+cmd[1] = 'W';
+cmd[2] = buf & 0xFF;
+cmd[3] = ~(buf & 0xFF);
+
+if (write(fd, cmd, 4) != 4) {	/* Send command packet */
+    /* set  CSR_ERR */
+    return EOF;
+    }
+
+if (read(fd, res, 2) != 2 ||
+    res[0] != ~res[1]) {	/* Read status byte & 1-compl */
+    /* set CSR_ERR */
+    return EOF;
+    }
+
+*csr = *csr & ~CSR_ERR;
+return 0;
+}
+#endif

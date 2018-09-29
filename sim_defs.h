@@ -855,13 +855,13 @@ struct DEBTAB {
 #define DEBUG_PRI(d,m)  (sim_deb && (d.dctrl & (m)))
 #define DEBUG_PRJ(d,m)  (sim_deb && ((d)->dctrl & (m)))
 
-#define SIM_DBG_EVENT       0x010000        /* event dispatch activities */
-#define SIM_DBG_ACTIVATE    0x020000        /* queue insertion activities */
-#define SIM_DBG_AIO_QUEUE   0x040000        /* asynch event queue activities */
-#define SIM_DBG_EXP_STACK   0x080000        /* expression stack activities */
-#define SIM_DBG_EXP_EVAL    0x100000        /* expression evaluation activities */
-#define SIM_DBG_BRK_ACTION  0x200000        /* action activities */
-#define SIM_DBG_DO          0x400000        /* do activities */
+#define SIM_DBG_EVENT       0x01000000      /* event dispatch activities */
+#define SIM_DBG_ACTIVATE    0x02000000      /* queue insertion activities */
+#define SIM_DBG_AIO_QUEUE   0x04000000      /* asynch event queue activities */
+#define SIM_DBG_EXP_STACK   0x08000000      /* expression stack activities */
+#define SIM_DBG_EXP_EVAL    0x10000000      /* expression evaluation activities */
+#define SIM_DBG_BRK_ACTION  0x20000000      /* action activities */
+#define SIM_DBG_DO          0x40000000      /* do activities */
 
 /* Open File Reference */
 struct FILEREF {
@@ -960,12 +960,12 @@ struct MEMFILE {
     _REGDATANF(#nm,&(loc),rdx,wd,off,dep,desc,NULL,0,siz),((fl) | REG_STRUCT)
 #define STRDATADF(nm,loc,rdx,wd,off,dep,siz,fl,desc,flds) \
     _REGDATANF(#nm,&(loc),rdx,wd,off,dep,desc,flds,0,siz),((fl) | REG_STRUCT)
-#define BIT(nm)              {#nm, 0xffffffff, 1}             /* Single Bit definition */
-#define BITNC                {"",  0xffffffff, 1}             /* Don't care Bit definition */
-#define BITF(nm,sz)          {#nm, 0xffffffff, sz}            /* Bit Field definition */
-#define BITNCF(sz)           {"",  0xffffffff, sz}            /* Don't care Bit Field definition */
-#define BITFFMT(nm,sz,fmt)   {#nm, 0xffffffff, sz, NULL, #fmt}/* Bit Field definition with Output format */
-#define BITFNAM(nm,sz,names) {#nm, 0xffffffff, sz, names}     /* Bit Field definition with value->name map */
+#define BIT(nm)              {#nm, 0xffffffff, 1,  NULL, NULL}  /* Single Bit definition */
+#define BITNC                {"",  0xffffffff, 1,  NULL, NULL}  /* Don't care Bit definition */
+#define BITF(nm,sz)          {#nm, 0xffffffff, sz, NULL, NULL}  /* Bit Field definition */
+#define BITNCF(sz)           {"",  0xffffffff, sz, NULL, NULL}  /* Don't care Bit Field definition */
+#define BITFFMT(nm,sz,fmt)   {#nm, 0xffffffff, sz, NULL, #fmt}  /* Bit Field definition with Output format */
+#define BITFNAM(nm,sz,names) {#nm, 0xffffffff, sz, names,NULL}  /* Bit Field definition with value->name map */
 #else /* For non-STD-C compiler which can't stringify macro arguments with # */
 /* Generic Register declaration for all fields.  
    If the register structure is extended, this macro will be retained and a 
@@ -1037,12 +1037,12 @@ struct MEMFILE {
     _REGDATANF("nm",&(loc),rdx,wd,off,dep,desc,NULL,0,siz),((fl) | REG_STRUCT)
 #define STRDATADF(nm,loc,rdx,wd,off,dep,siz,fl,desc,flds) \
     _REGDATANF("nm",&(loc),rdx,wd,off,dep,desc,flds,0,siz),((fl) | REG_STRUCT)
-#define BIT(nm)              {"nm", 0xffffffff, 1}              /* Single Bit definition */
-#define BITNC                {"",   0xffffffff, 1}              /* Don't care Bit definition */
-#define BITF(nm,sz)          {"nm", 0xffffffff, sz}             /* Bit Field definition */
-#define BITNCF(sz)           {"",   0xffffffff, sz}             /* Don't care Bit Field definition */
+#define BIT(nm)              {"nm", 0xffffffff, 1,  NULL, NULL} /* Single Bit definition */
+#define BITNC                {"",   0xffffffff, 1,  NULL, NULL} /* Don't care Bit definition */
+#define BITF(nm,sz)          {"nm", 0xffffffff, sz, NULL, NULL} /* Bit Field definition */
+#define BITNCF(sz)           {"",   0xffffffff, sz, NULL, NULL} /* Don't care Bit Field definition */
 #define BITFFMT(nm,sz,fmt)   {"nm", 0xffffffff, sz, NULL, "fmt"}/* Bit Field definition with Output format */
-#define BITFNAM(nm,sz,names) {"nm", 0xffffffff, sz, names}      /* Bit Field definition with value->name map */
+#define BITFNAM(nm,sz,names) {"nm", 0xffffffff, sz, names,NULL} /* Bit Field definition with value->name map */
 #endif
 #define ENDBITS {NULL}  /* end of bitfield list */
 

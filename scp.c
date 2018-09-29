@@ -1573,6 +1573,31 @@ static const char simh_help[] =
       "+would extract the last 10 characters of the XYZ variable.\n\n"
       "++%%XYZ:~0,-2%%\n\n"
       "+would extract all but the last 2 characters of the XYZ variable.\n"
+      "4Parameter and Environment Variable File Parsing\n"
+      " The value of environment variables can be parsed as filenames\n"
+      " and have their values be expanded to full paths and/or into pieces.\n"
+      " Parsing and expansion of file names.\n\n"
+      "++%%~I%%     - expands the value of %%I%% removing any surrounding quotes (\")\n"
+      "++%%~fI%%    - expands the value of %%I%% to a fully qualified path name\n"
+      "++%%~pI%%    - expands the value of %%I%% to a path only\n"
+      "++%%~nI%%    - expands the value of %%I%% to a file name only\n"
+      "++%%~xI%%    - expands the value of %%I%% to a file extension only\n\n"
+      " The modifiers can be combined to get compound results:\n\n"
+      "++%%~pnI%%   - expands the value of %%I%% to a path and name only\n"
+      "++%%~nxI%%   - expands the value of %%I%% to a file name and extension only\n\n"
+      " In the above example above %%I%% can be replaced by other\n"
+      " environment variables or numeric parameters to a DO command\n"
+      " invokation.\n"
+      " Examples:\n\n"
+      "++sim> set env FNAME='xyzzy.ini'\n"
+      "++sim> echo ~FNAME=%%~FNAME%%\n"
+      "++xyzzy.ini\n"
+      "++sim> echo ~fFNAME=%%~fFNAME%%\n"
+      "++~fFNAME=/home/user/xyzzy.ini\n"
+      "++sim> echo ~nxFNAME=%%~nxFNAME%%\n"
+      "++~nxFNAME=xyzzy.ini\n"
+      "++sim> echo ~fFNAME=%%~pnFNAME%%\n"
+      "++~pnFNAME=/home/user/xyzzy\n\n"
 #define HLP_GOTO        "*Commands Executing_Command_Files GOTO"
       "3GOTO\n"
       " Commands in a command file execute in sequence until either an error\n"
@@ -1969,7 +1994,7 @@ static const char simh_help[] =
       " If the expect rule was a regular expression rule, then the environment\n"
       " variable _EXPECT_MATCH_GROUP_0 is set to the whole string which matched\n"
       " and if the match pattern had any parentheses delimited sub-groups, the\n"
-      " environment variables _EXPECT_MATCH_PATTERN_1 thru _EXPECT_MATCH_PATTERN_n\n"
+      " environment variables _EXPECT_MATCH_GROUP_1 thru _EXPECT_MATCH_GROUP_n\n"
       " are set to the values within the string which matched the respective\n"
       " sub-groups.\n"
        /***************** 80 character line width template *************************/
@@ -2205,70 +2230,70 @@ static const char simh_help[] =
 
 
 static CTAB cmd_table[] = {
-    { "RESET",      &reset_cmd,     0,          HLP_RESET },
-    { "EXAMINE",    &exdep_cmd,     EX_E,       HLP_EXAMINE },
-    { "IEXAMINE",   &exdep_cmd,     EX_E+EX_I,  HLP_IEXAMINE },
-    { "DEPOSIT",    &exdep_cmd,     EX_D,       HLP_DEPOSIT },
-    { "IDEPOSIT",   &exdep_cmd,     EX_D+EX_I,  HLP_IDEPOSIT },
-    { "EVALUATE",   &eval_cmd,      0,          HLP_EVALUATE },
+    { "RESET",      &reset_cmd,     0,          HLP_RESET,      NULL, NULL },
+    { "EXAMINE",    &exdep_cmd,     EX_E,       HLP_EXAMINE,    NULL, NULL },
+    { "IEXAMINE",   &exdep_cmd,     EX_E+EX_I,  HLP_IEXAMINE,   NULL, NULL },
+    { "DEPOSIT",    &exdep_cmd,     EX_D,       HLP_DEPOSIT,    NULL, NULL },
+    { "IDEPOSIT",   &exdep_cmd,     EX_D+EX_I,  HLP_IDEPOSIT,   NULL, NULL },
+    { "EVALUATE",   &eval_cmd,      0,          HLP_EVALUATE,   NULL, NULL },
     { "RUN",        &run_cmd,       RU_RUN,     HLP_RUN,        NULL, &run_cmd_message },
     { "GO",         &run_cmd,       RU_GO,      HLP_GO,         NULL, &run_cmd_message },
     { "STEP",       &run_cmd,       RU_STEP,    HLP_STEP,       NULL, &run_cmd_message },
     { "NEXT",       &run_cmd,       RU_NEXT,    HLP_NEXT,       NULL, &run_cmd_message },
     { "CONTINUE",   &run_cmd,       RU_CONT,    HLP_CONTINUE,   NULL, &run_cmd_message },
     { "BOOT",       &run_cmd,       RU_BOOT,    HLP_BOOT,       NULL, &run_cmd_message },
-    { "BREAK",      &brk_cmd,       SSH_ST,     HLP_BREAK },
-    { "NOBREAK",    &brk_cmd,       SSH_CL,     HLP_NOBREAK },
-    { "DEBUG",      &debug_cmd,     1,          HLP_DEBUG},
-    { "NODEBUG",    &debug_cmd,     0,          HLP_NODEBUG },
-    { "ATTACH",     &attach_cmd,    0,          HLP_ATTACH },
-    { "DETACH",     &detach_cmd,    0,          HLP_DETACH },
-    { "ASSIGN",     &assign_cmd,    0,          HLP_ASSIGN },
-    { "DEASSIGN",   &deassign_cmd,  0,          HLP_DEASSIGN },
-    { "SAVE",       &save_cmd,      0,          HLP_SAVE  },
-    { "RESTORE",    &restore_cmd,   0,          HLP_RESTORE },
-    { "GET",        &restore_cmd,   0,          NULL },
-    { "LOAD",       &load_cmd,      0,          HLP_LOAD },
-    { "DUMP",       &load_cmd,      1,          HLP_DUMP },
-    { "EXIT",       &exit_cmd,      0,          HLP_EXIT },
-    { "QUIT",       &exit_cmd,      0,          NULL },
-    { "BYE",        &exit_cmd,      0,          NULL },
-    { "CD",         &set_default_cmd, 0,        HLP_CD },
-    { "PWD",        &pwd_cmd,       0,          HLP_PWD },
-    { "DIR",        &dir_cmd,       0,          HLP_DIR },
-    { "LS",         &dir_cmd,       0,          HLP_LS },
-    { "TYPE",       &type_cmd,      0,          HLP_TYPE },
-    { "CAT",        &type_cmd,      0,          HLP_CAT },
-    { "DELETE",     &delete_cmd,    0,          HLP_DELETE },
-    { "RM",         &delete_cmd,    0,          HLP_RM },
-    { "COPY",       &copy_cmd,      0,          HLP_COPY },
-    { "CP",         &copy_cmd,      0,          HLP_CP },
-    { "SET",        &set_cmd,       0,          HLP_SET },
-    { "SHOW",       &show_cmd,      0,          HLP_SHOW },
-    { "DO",         &do_cmd,        1,          HLP_DO },
-    { "GOTO",       &goto_cmd,      1,          HLP_GOTO },
-    { "RETURN",     &return_cmd,    0,          HLP_RETURN },
-    { "SHIFT",      &shift_cmd,     0,          HLP_SHIFT },
-    { "CALL",       &call_cmd,      0,          HLP_CALL },
-    { "ON",         &on_cmd,        0,          HLP_ON },
-    { "IF",         &assert_cmd,    0,          HLP_IF },
-    { "ELSE",       &assert_cmd,    2,          HLP_IF },
-    { "PROCEED",    &noop_cmd,      0,          HLP_PROCEED },
-    { "IGNORE",     &noop_cmd,      0,          HLP_IGNORE },
-    { "ECHO",       &echo_cmd,      0,          HLP_ECHO },
-    { "ECHOF",      &echof_cmd,     0,          HLP_ECHOF },
-    { "ASSERT",     &assert_cmd,    1,          HLP_ASSERT },
-    { "SEND",       &send_cmd,      1,          HLP_SEND },
-    { "NOSEND",     &send_cmd,      0,          HLP_SEND },
-    { "EXPECT",     &expect_cmd,    1,          HLP_EXPECT },
-    { "NOEXPECT",   &expect_cmd,    0,          HLP_EXPECT },
-    { "SLEEP",      &sleep_cmd,     0,          HLP_SLEEP },
-    { "!",          &spawn_cmd,     0,          HLP_SPAWN },
-    { "HELP",       &help_cmd,      0,          HLP_HELP },
+    { "BREAK",      &brk_cmd,       SSH_ST,     HLP_BREAK,      NULL, NULL },
+    { "NOBREAK",    &brk_cmd,       SSH_CL,     HLP_NOBREAK,    NULL, NULL },
+    { "DEBUG",      &debug_cmd,     1,          HLP_DEBUG,      NULL, NULL },
+    { "NODEBUG",    &debug_cmd,     0,          HLP_NODEBUG,    NULL, NULL },
+    { "ATTACH",     &attach_cmd,    0,          HLP_ATTACH,     NULL, NULL },
+    { "DETACH",     &detach_cmd,    0,          HLP_DETACH,     NULL, NULL },
+    { "ASSIGN",     &assign_cmd,    0,          HLP_ASSIGN,     NULL, NULL },
+    { "DEASSIGN",   &deassign_cmd,  0,          HLP_DEASSIGN,   NULL, NULL },
+    { "SAVE",       &save_cmd,      0,          HLP_SAVE,       NULL, NULL },
+    { "RESTORE",    &restore_cmd,   0,          HLP_RESTORE,    NULL, NULL },
+    { "GET",        &restore_cmd,   0,          NULL,           NULL, NULL },
+    { "LOAD",       &load_cmd,      0,          HLP_LOAD,       NULL, NULL },
+    { "DUMP",       &load_cmd,      1,          HLP_DUMP,       NULL, NULL },
+    { "EXIT",       &exit_cmd,      0,          HLP_EXIT,       NULL, NULL },
+    { "QUIT",       &exit_cmd,      0,          NULL,           NULL, NULL },
+    { "BYE",        &exit_cmd,      0,          NULL,           NULL, NULL },
+    { "CD",         &set_default_cmd, 0,        HLP_CD,         NULL, NULL },
+    { "PWD",        &pwd_cmd,       0,          HLP_PWD,        NULL, NULL },
+    { "DIR",        &dir_cmd,       0,          HLP_DIR,        NULL, NULL },
+    { "LS",         &dir_cmd,       0,          HLP_LS,         NULL, NULL },
+    { "TYPE",       &type_cmd,      0,          HLP_TYPE,       NULL, NULL },
+    { "CAT",        &type_cmd,      0,          HLP_CAT,        NULL, NULL },
+    { "DELETE",     &delete_cmd,    0,          HLP_DELETE,     NULL, NULL },
+    { "RM",         &delete_cmd,    0,          HLP_RM,         NULL, NULL },
+    { "COPY",       &copy_cmd,      0,          HLP_COPY,       NULL, NULL },
+    { "CP",         &copy_cmd,      0,          HLP_CP,         NULL, NULL },
+    { "SET",        &set_cmd,       0,          HLP_SET,        NULL, NULL },
+    { "SHOW",       &show_cmd,      0,          HLP_SHOW,       NULL, NULL },
+    { "DO",         &do_cmd,        1,          HLP_DO,         NULL, NULL },
+    { "GOTO",       &goto_cmd,      1,          HLP_GOTO,       NULL, NULL },
+    { "RETURN",     &return_cmd,    0,          HLP_RETURN,     NULL, NULL },
+    { "SHIFT",      &shift_cmd,     0,          HLP_SHIFT,      NULL, NULL },
+    { "CALL",       &call_cmd,      0,          HLP_CALL,       NULL, NULL },
+    { "ON",         &on_cmd,        0,          HLP_ON,         NULL, NULL },
+    { "IF",         &assert_cmd,    0,          HLP_IF,         NULL, NULL },
+    { "ELSE",       &assert_cmd,    2,          HLP_IF,         NULL, NULL },
+    { "PROCEED",    &noop_cmd,      0,          HLP_PROCEED,    NULL, NULL },
+    { "IGNORE",     &noop_cmd,      0,          HLP_IGNORE,     NULL, NULL },
+    { "ECHO",       &echo_cmd,      0,          HLP_ECHO,       NULL, NULL },
+    { "ECHOF",      &echof_cmd,     0,          HLP_ECHOF,      NULL, NULL },
+    { "ASSERT",     &assert_cmd,    1,          HLP_ASSERT,     NULL, NULL },
+    { "SEND",       &send_cmd,      1,          HLP_SEND,       NULL, NULL },
+    { "NOSEND",     &send_cmd,      0,          HLP_SEND,       NULL, NULL },
+    { "EXPECT",     &expect_cmd,    1,          HLP_EXPECT,     NULL, NULL },
+    { "NOEXPECT",   &expect_cmd,    0,          HLP_EXPECT,     NULL, NULL },
+    { "SLEEP",      &sleep_cmd,     0,          HLP_SLEEP,      NULL, NULL },
+    { "!",          &spawn_cmd,     0,          HLP_SPAWN,      NULL, NULL },
+    { "HELP",       &help_cmd,      0,          HLP_HELP,       NULL, NULL },
 #if defined(USE_SIM_VIDEO)
-    { "SCREENSHOT", &screenshot_cmd,0,          HLP_SCREENSHOT },
+    { "SCREENSHOT", &screenshot_cmd,0,          HLP_SCREENSHOT, NULL, NULL },
 #endif
-    { NULL, NULL, 0 }
+    { NULL,         NULL,           0,          NULL,           NULL, NULL }
     };
 
 static CTAB set_glob_tab[] = {
@@ -2537,7 +2562,7 @@ if (cptr && sizeof (nbuf) > strlen (cptr) + strlen ("/simh.ini") + 1) {
     sprintf(nbuf, "\"%s%s%ssimh.ini\"", cptr2 ? cptr2 : "", cptr, strchr (cptr, '/') ? "/" : "\\");
     stat = do_cmd (-1, nbuf) & ~SCPE_NOMESSAGE;         /* simh.ini proc cmd file */
     }
-if (stat == SCPE_OPENERR)
+if (SCPE_BARE_STATUS(stat) == SCPE_OPENERR)
     stat = do_cmd (-1, "simh.ini");                     /* simh.ini proc cmd file */
 if (*cbuf)                                              /* cmd file arg? */
     stat = do_cmd (0, cbuf);                            /* proc cmd file */
@@ -2561,13 +2586,13 @@ else if (*argv[0]) {                                    /* sim name arg? */
             }
         }
     }
-if (stat == SCPE_OPENERR)                               /* didn't exist/can't open? */
+if (SCPE_BARE_STATUS(stat) == SCPE_OPENERR)             /* didn't exist/can't open? */
     stat = SCPE_OK;
 
 if (sim_switches & SWMASK ('T'))                        /* Command Line -T switch */
     stat = sim_library_unit_tests ();                   /* run library unit tests */
 
-if (stat == SCPE_OK)
+if (SCPE_BARE_STATUS(stat) != SCPE_EXIT)
     process_stdin_commands (SCPE_BARE_STATUS(stat), argv);
 
 detach_all (0, TRUE);                                   /* close files */
@@ -3159,7 +3184,7 @@ t_stat help_cmd (int32 flag, CONST char *cptr)
 char gbuf[CBUFSIZE];
 CTAB *cmdp;
 
-GET_SWITCHES (cptr);
+GET_SWITCHES (cptr);                                    /* get switches */
 if (sim_switches & SWMASK ('F'))
     flag = flag | SCP_HELP_FLAT;
 if (*cptr) {
@@ -3337,7 +3362,7 @@ uint8 dbuf[4*CBUFSIZE];
 uint32 dsize = 0;
 t_stat r;
 
-GET_SWITCHES (cptr);
+GET_SWITCHES (cptr);                                    /* get switches */
 tptr = get_glyph (cptr, gbuf, ',');
 if (sim_isalpha(gbuf[0]) && (strchr (gbuf, ':'))) {
     r = tmxr_locate_line (gbuf, &lp);
@@ -3463,6 +3488,8 @@ if ((fpin = fopen (do_arg[0], "r")) == NULL) {          /* file failed to open? 
         return SCPE_OPENERR;                            /* return failure */
         }
     }
+else
+    strlcpy (cbuf, do_arg[0], sizeof (cbuf));           /* store name of successfully opened file */
 if (flag >= 0) {                                        /* Only bump nesting from command or nested */
     ++sim_do_depth;
     if (sim_on_inherit) {                               /* inherit ON condition actions? */
@@ -3488,8 +3515,11 @@ if (flag >= 0) {                                        /* Only bump nesting fro
     }
 
 sim_debug (SIM_DBG_DO, sim_dflt_dev, "do_cmd_label(%d, flag=%d, '%s', '%s')\n", sim_do_depth, flag, fcptr, label ? label : "");
-strlcpy( sim_do_filename[sim_do_depth], do_arg[0], 
-         sizeof (sim_do_filename[sim_do_depth]));       /* stash away do file name for possible use by 'call' command */
+if (NULL == (c = sim_filepath_parts (cbuf, "f")))
+    return SCPE_MEM;
+strlcpy( sim_do_filename[sim_do_depth], c, 
+         sizeof (sim_do_filename[sim_do_depth]));       /* stash away full path of do file name for possible use by 'call' command */
+free (c);
 sim_do_label[sim_do_depth] = label;                     /* stash away do label for possible use in messages */
 sim_goto_line[sim_do_depth] = 0;
 if (label) {
@@ -4076,54 +4106,76 @@ for (; *ip && (op < oend); ) {
         ip++;                                           /* skip one */
         *op++ = *ip++;                                  /* copy insert % */
         }
-    else 
-        if ((*ip == '%') && 
-            (sim_isalnum(ip[1]) || (ip[1] == '*') || (ip[1] == '_'))) {/* sub? */
-            if ((ip[1] >= '0') && (ip[1] <= ('9'))) {   /* %n = sub */
-                ap = do_arg[ip[1] - '0'];
-                for (i=0; i<ip[1] - '0'; ++i)           /* make sure we're not past the list end */
+    else {
+        t_bool expand_it = FALSE;
+        char parts[32];
+
+        if (*ip == '%') {
+            ap = NULL;
+            ++ip;
+            if (*ip == '~') {
+                expand_it = TRUE;
+                ++ip;
+                for (i=0; (i < (sizeof (parts) - 1)) && (strchr ("fpnx", *ip)); i++, ip++) {
+                    parts[i] = *ip;
+                    parts[i + 1] = '\0';
+                    }
+                }
+            if ((*ip >= '0') && (*ip <= ('9'))) {       /* %n = sub */
+                ap = do_arg[*ip - '0'];
+                for (i=0; i<*ip - '0'; ++i)           /* make sure we're not past the list end */
                     if (do_arg[i] == NULL) {
                         ap = NULL;
                         break;
                         }
-                ip = ip + 2;
+                ++ip;
                 }
-            else if (ip[1] == '*') {                    /* %1 ... %9 = sub */
-                memset (rbuf, '\0', sizeof(rbuf));
-                ap = rbuf;
-                for (i=1; i<=9; ++i)
-                    if (do_arg[i] == NULL)
-                        break;
-                    else
-                        if ((sizeof(rbuf)-strlen(rbuf)) < (2 + strlen(do_arg[i]))) {
-                            if (strchr(do_arg[i], ' ')) { /* need to surround this argument with quotes */
-                                char quote = '"';
-                                if (strchr(do_arg[i], quote))
-                                    quote = '\'';
-                                sprintf(&rbuf[strlen(rbuf)], "%s%c%s%c\"", (i != 1) ? " " : "", quote, do_arg[i], quote);
+            else {
+                if (*ip == '*') {                       /* %1 ... %9 = sub */
+                    memset (rbuf, '\0', sizeof(rbuf));
+                    ap = rbuf;
+                    for (i=1; i<=9; ++i) {
+                        if (do_arg[i] == NULL)
+                            break;
+                        else
+                            if ((sizeof(rbuf)-strlen(rbuf)) < (2 + strlen(do_arg[i]))) {
+                                if (strchr(do_arg[i], ' ')) { /* need to surround this argument with quotes */
+                                    char quote = '"';
+                                    if (strchr(do_arg[i], quote))
+                                        quote = '\'';
+                                    sprintf(&rbuf[strlen(rbuf)], "%s%c%s%c\"", (i != 1) ? " " : "", quote, do_arg[i], quote);
+                                    }
+                                else
+                                    sprintf(&rbuf[strlen(rbuf)], "%s%s", (i != 1) ? " " : "", do_arg[i]);
                                 }
                             else
-                                sprintf(&rbuf[strlen(rbuf)], "%s%s", (i != 1) ? " " : "", do_arg[i]);
-                            }
-                        else
-                            break;
-                ip = ip + 2;
-                }
-            else {                                      /* check environment variable or special variables */
-                get_glyph_nc (ip+1, gbuf, '%');         /* get the literal name */
-                ap = _sim_get_env_special (gbuf, rbuf, sizeof (rbuf));
-                ip += 1 + strlen (gbuf);
-                if (*ip == '%') 
+                                break;
+                        }
                     ++ip;
+                    }
+                else {
+                    get_glyph_nc (ip, gbuf, '%');           /* get the literal name */
+                    ap = _sim_get_env_special (gbuf, rbuf, sizeof (rbuf));
+                    ip += strlen (gbuf);
+                    if (*ip == '%') 
+                        ++ip;
+                    }
                 }
             if (ap) {                                   /* non-null arg? */
+                char *expanded = NULL;
+
+                if (expand_it) {
+                    expanded = sim_filepath_parts (ap, parts);
+                    ap = expanded;
+                    }
                 while (*ap && (op < oend)) {            /* copy the argument */
                     sim_sub_instr_off[outstr_off++] = ip - instr;
                     *op++ = *ap++;
                     }
+                free (expanded);
                 }
             }
-        else
+        else {
             if (ip == istart) {                         /* at beginning of input? */
                 get_glyph (istart, gbuf, 0);            /* substitute initial token */
                 ap = getenv(gbuf);                      /* if it is an environment variable name */
@@ -4142,6 +4194,8 @@ for (; *ip && (op < oend); ) {
                 sim_sub_instr_off[outstr_off++] = ip - instr;
                 *op++ = *ip++;                          /* literal character */
                 }
+            }
+        }
     }
 *op = 0;                                                /* term buffer */
 sim_sub_instr_off[outstr_off] = 0;
@@ -4363,6 +4417,17 @@ if (Exist || (*gbuf == '"') || (*gbuf == '\'')) {       /* quoted string compari
     else {
         FILE *f = fopen (gbuf, "r");
 
+        if (!f) {
+            if (((gbuf[0] == '"') || (gbuf[0] == '\'')) &&      /* quoted? */
+                (gbuf[0] == gbuf[strlen (gbuf) - 1])) {
+                char *without_quotes = sim_filepath_parts (gbuf, "f");
+
+                if (without_quotes) {
+                    f = fopen (without_quotes, "r");
+                    free (without_quotes);
+                    }
+                }
+            }
         if (f)
             fclose (f);
         result = (f != NULL);
@@ -6116,7 +6181,8 @@ return SCPE_OK;
 t_stat show_default (FILE *st, DEVICE *dptr, UNIT *uptr, int32 flag, CONST char *cptr)
 {
 char buffer[PATH_MAX];
-char *wd = getcwd(buffer, PATH_MAX);
+char *wd = sim_getcwd(buffer, PATH_MAX);
+
 fprintf (st, "%s\n", wd);
 return SCPE_OK;
 }
@@ -6213,11 +6279,7 @@ strlcpy (WildName, cptr, sizeof(WildName));
 cptr = WildName;
 sim_trim_endspc (WildName);
 if ((*cptr != '/') || (0 == memcmp (cptr, "./", 2)) || (0 == memcmp (cptr, "../", 3))) {
-#if defined (VMS)
-    getcwd (WholeName, sizeof (WholeName)-1, 0);
-#else
-    getcwd (WholeName, sizeof (WholeName)-1);
-#endif
+    sim_getcwd (WholeName, sizeof (WholeName)-1);
     strlcat (WholeName, "/", sizeof (WholeName));
     strlcat (WholeName, cptr, sizeof (WholeName));
     sim_trim_endspc (WholeName);
@@ -6243,11 +6305,7 @@ if (c) {
     DirName[1+c-WholeName] = '\0';
     }
 else {
-#if defined (VMS)
-    getcwd (WholeName, sizeof (WholeName)-1, 0);
-#else
-    getcwd (WholeName, sizeof (WholeName)-1);
-#endif
+    sim_getcwd (WholeName, sizeof (WholeName)-1);
     }
 cptr = WholeName;
 #if defined (HAVE_GLOB)
@@ -6669,8 +6727,8 @@ t_stat reset_cmd (int32 flag, CONST char *cptr)
 char gbuf[CBUFSIZE];
 DEVICE *dptr;
 
-GET_SWITCHES (cptr);                                    /* get switches */
 run_cmd_did_reset = FALSE;
+GET_SWITCHES (cptr);                                    /* get switches */
 if (*cptr == 0)                                         /* reset(cr) */
     return (reset_all (0));
 cptr = get_glyph (cptr, gbuf, 0);                       /* get next glyph */
@@ -7931,7 +7989,6 @@ fflush(stdout);                                         /* flush stdout */
 if (sim_log)                                            /* flush log if enabled */
     fflush (sim_log);
 sim_throt_sched ();                                     /* set throttle */
-sim_rtcn_init_all ();                                   /* re-init clocks */
 sim_start_timer_services ();                            /* enable wall clock timing */
 
 do {
@@ -8834,7 +8891,7 @@ DEVICE *dptr = sim_dflt_dev;
 int32 i, rdx, a, lim;
 t_stat r;
 
-GET_SWITCHES (cptr);
+GET_SWITCHES (cptr);                                    /* get switches */
 GET_RADIX (rdx, dptr->dradix);
 for (i = 0; i < sim_emax; i++)
     sim_eval[i] = 0;
@@ -14377,11 +14434,13 @@ if (isalpha (*data) || (*data == '_')) {
     if (rptr) {
         *svalue = (t_svalue)get_rval (rptr, 0);
         sprint_val (string, *svalue, 10, string_size - 1, PV_LEFTSIGN);
+        sim_debug (SIM_DBG_EXP_EVAL, sim_dflt_dev, "[Value: %s=%s]\n", data, string);
         return TRUE;
         }
     gptr = _sim_get_env_special (data, string, string_size - 1);
     if (gptr) {
         *svalue = strtotsv(string, &gptr, 0);
+        sim_debug (SIM_DBG_EXP_EVAL, sim_dflt_dev, "[Value: %s=%s]\n", data, string);
         return ((*gptr == '\0') && (*string));
         }
     else {
@@ -14396,10 +14455,12 @@ if ((data[0] == '"') && (data_size > 1) && (data[data_size - 1] == '"'))
     strlcpy (string, data, string_size);
 if (string[0] == '\0') {
     *svalue = strtotsv(data, &gptr, 0);
+    sim_debug (SIM_DBG_EXP_EVAL, sim_dflt_dev, "[Value: %s=%s]\n", data, string);
     return ((*gptr == '\0') && (*data));
     }
 sim_sub_args (string, string_size, sim_exp_argv);
 *svalue = strtotsv(string, &gptr, 0);
+sim_debug (SIM_DBG_EXP_EVAL, sim_dflt_dev, "[Value: %s=%s]\n", data, string);
 return ((*gptr == '\0') && (*string));
 }
 
