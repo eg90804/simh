@@ -404,6 +404,7 @@ return sim_messagef (SCPE_ARG, "Error Copying '%s' to '%s': %s\n", source_file, 
 }
 
 #include <io.h>
+#include <direct.h>
 int sim_set_fsize (FILE *fptr, t_addr size)
 {
 return _chsize(_fileno(fptr), (long)size);
@@ -446,7 +447,7 @@ if ((*shmem)->hMapping == INVALID_HANDLE_VALUE) {
 
     sim_shmem_close (*shmem);
     *shmem = NULL;
-    return sim_messagef (SCPE_OPENERR, "Can't CreateFileMapping of a %u byte shared memory segment '%s' - LastError=0x%X\n", size, name, LastError);
+    return sim_messagef (SCPE_OPENERR, "Can't CreateFileMapping of a %u byte shared memory segment '%s' - LastError=0x%X\n", (unsigned int)size, name, (unsigned int)LastError);
     }
 AlreadyExists = (GetLastError () == ERROR_ALREADY_EXISTS);
 (*shmem)->shm_base = MapViewOfFile ((*shmem)->hMapping, FILE_MAP_ALL_ACCESS, 0, 0, 0);
@@ -455,7 +456,7 @@ if ((*shmem)->shm_base == NULL) {
 
     sim_shmem_close (*shmem);
     *shmem = NULL;
-    return sim_messagef (SCPE_OPENERR, "Can't MapViewOfFile() of a %u byte shared memory segment '%s' - LastError=0x%X\n", size, name, LastError);
+    return sim_messagef (SCPE_OPENERR, "Can't MapViewOfFile() of a %u byte shared memory segment '%s' - LastError=0x%X\n", (unsigned int)size, name, (unsigned int)LastError);
     }
 if (AlreadyExists) {
     if (*((DWORD *)((*shmem)->shm_base)) == 0)
@@ -464,7 +465,7 @@ if (AlreadyExists) {
         DWORD SizeFound = *((DWORD *)((*shmem)->shm_base));
         sim_shmem_close (*shmem);
         *shmem = NULL;
-        return sim_messagef (SCPE_OPENERR, "Shared Memory segment '%s' is %u bytes instead of %d\n", name, SizeFound, (int)size);
+        return sim_messagef (SCPE_OPENERR, "Shared Memory segment '%s' is %u bytes instead of %d\n", name, (unsigned int)SizeFound, (int)size);
         }
     }
 else
@@ -723,3 +724,145 @@ va_end (arglist);
 return 0;
 }
 #endif
+
+char *sim_getcwd (char *buf, size_t buf_size)
+{
+#if defined (VMS)
+return getcwd (buf, buf_size, 0);
+#else
+return getcwd (buf, buf_size);
+#endif
+}
+
+/*
+ * Parsing and expansion of file names.
+ *
+ *    %~I%        - expands the value of %I% removing any surrounding quotes (")
+ *    %~fI%       - expands the value of %I% to a fully qualified path name
+ *    %~pI%       - expands the value of %I% to a path only
+ *    %~nI%       - expands the value of %I% to a file name only
+ *    %~xI%       - expands the value of %I% to a file extension only
+ *
+ * The modifiers can be combined to get compound results:
+ *
+ *    %~pnI%      - expands the value of %I% to a path and name only
+ *    %~nxI%      - expands the value of %I% to a file name and extension only
+ *
+ * In the above example above %I% can be replaced by other 
+ * environment variables or numeric parameters to a DO command
+ * invokation.
+ */
+
+char *sim_filepath_parts (const char *filepath, const char *parts)
+{
+size_t tot_len = 0, tot_size = 0;
+char *tempfilepath = NULL;
+char *fullpath = NULL, *result = NULL;
+char *c, *name, *ext;
+char chr;
+const char *p;
+
+if (((*filepath == '\'') || (*filepath == '"')) &&
+    (filepath[strlen (filepath) - 1] == *filepath)) {
+    size_t temp_size = 1 + strlen (filepath);
+
+    tempfilepath = malloc (temp_size);
+    if (tempfilepath == NULL)
+        return NULL;
+    strlcpy (tempfilepath, 1 + filepath, temp_size);
+    tempfilepath[strlen (tempfilepath) - 1] = '\0';
+    filepath = tempfilepath;
+    }
+if ((filepath[1] == ':')  ||
+    (filepath[0] == '/')  || 
+    (filepath[0] == '\\')){
+        tot_len = 1 + strlen (filepath);
+        fullpath = malloc (tot_len);
+        if (fullpath == NULL) {
+            free (tempfilepath);
+            return NULL;
+            }
+        strcpy (fullpath, filepath);
+    }
+else {
+    char dir[PATH_MAX+1] = "";
+    char *wd = sim_getcwd(dir, sizeof (dir));
+
+    if (wd == NULL) {
+        free (tempfilepath);
+        return NULL;
+        }
+    tot_len = 1 + strlen (filepath) + 1 + strlen (dir);
+    fullpath = malloc (tot_len);
+    if (fullpath == NULL) {
+        free (tempfilepath);
+        return NULL;
+        }
+    strlcpy (fullpath, dir, tot_len);
+    strlcat (fullpath, "/", tot_len);
+    strlcat (fullpath, filepath, tot_len);
+    }
+while ((c = strchr (fullpath, '\\')))           /* standardize on / directory separator */
+       *c = '/';
+while ((c = strstr (fullpath + 1, "//")))       /* strip out redundant / characters (leaving the option for a leading //) */
+       memmove (c, c + 1, 1 + strlen (c + 1));
+while ((c = strstr (fullpath, "/./")))          /* strip out irrelevant /./ sequences */
+       memmove (c, c + 2, 1 + strlen (c + 2));
+while ((c = strstr (fullpath, "/../"))) {       /* process up directory climbing */
+    char *cl = c -1;
+
+    while ((*cl != '/') && (cl > fullpath))
+        --cl;
+    if (*cl == '/')
+        memmove (cl, c + 3, 1 + strlen (c + 3));
+    else
+        break;
+    }
+name = 1 + strrchr (fullpath, '/');
+ext = strrchr (name, '.');
+if (ext == NULL)
+    ext = name + strlen (name);
+for (p = parts, tot_size = 0; *p; p++) {
+    switch (*p) {
+        case 'f':
+            tot_size += strlen (fullpath);
+            break;
+        case 'p':
+            tot_size += name - fullpath;
+            break;
+        case 'n':
+            tot_size += ext - name;
+            break;
+        case 'x':
+            tot_size += strlen (ext);
+            break;
+        }
+    }
+result = malloc (1 + tot_size);
+*result = '\0';
+for (p = parts; *p; p++) {
+    switch (*p) {
+        case 'f':
+            strlcat (result, fullpath, 1 + tot_size);
+            break;
+        case 'p':
+            chr = *name;
+            *name = '\0';
+            strlcat (result, fullpath, 1 + tot_size);
+            *name = chr;
+            break;
+        case 'n':
+            chr = *ext;
+            *ext = '\0';
+            strlcat (result, name, 1 + tot_size);
+            *ext = chr;
+            break;
+        case 'x':
+            strlcat (result, ext, 1 + tot_size);
+            break;
+        }
+    }
+free (fullpath);
+free (tempfilepath);
+return result;
+}
