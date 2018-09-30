@@ -60,7 +60,6 @@ int32 ptp_stopioe = 0;                                  /* stop on error */
 #ifdef REAL_PC05
 int32 pc05_fd = 0;
 int32 pc05_link_set = 0;
-int32 pc05_comm_lock = 0;
 struct termios pc05_tty;
 #endif
 
@@ -482,7 +481,6 @@ if (tcsetattr(fd, TCSANOW, &pc05_tty)) {
     }
 
 pc05_link_set = 1;	/* Flag link set & ready */
-pc05_comm_lock = 0;
 }
 
 int32 pc05_getc(FILE *p, int32 *csr)
