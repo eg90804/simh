@@ -60,8 +60,8 @@ int32 ptp_stopioe = 0;                                  /* stop on error */
 #ifdef REAL_PC05
 int32 pc05_fd = 0;
 int32 pc05_link_set = 0;
-int32 pc05_comm_lock = 0;
 struct termios pc05_tty;
+int32 pc05_comm_lock = 0;
 #endif
 
 t_stat ptr_rd (int32 *data, int32 PA, int32 access);
@@ -246,7 +246,7 @@ if (ptr_csr & CSR_IE) SET_INT (PTR);
 if ((ptr_unit.flags & UNIT_ATT) == 0)
     return IORETURN (ptr_stopioe, SCPE_UNATT);
 #ifdef REAL_PC05
-if ((temp = pc05_getc (ptr_unit.fileref, &ptr_csr)) == EOF) {
+if ((temp = pc05_data('R', ptr_unit.fileref, &temp, &ptr_csr)) == EOF) {
   return SCPE_OK;
   }
 #else
@@ -286,7 +286,7 @@ t_stat reason;
 
 reason = attach_unit (uptr, cptr);
 #ifdef REAL_PC05
-if ((ptr_unit.flags & UNIT_ATT) == 0 && pc05_set_line(uptr) == 0) {
+if ((ptr_unit.flags & UNIT_ATT) == 0 && pc05_att_line(uptr) == 0) {
 #else
 if ((ptr_unit.flags & UNIT_ATT) == 0)
 #endif
@@ -298,6 +298,9 @@ return reason;
 t_stat ptr_detach (UNIT *uptr)
 {
 ptr_csr = ptr_csr | CSR_ERR;
+#ifdef REAL_PC05
+pc05_det_line();
+#endif
 return detach_unit (uptr);
 }
 
@@ -357,7 +360,10 @@ if (ptp_csr & CSR_IE)
 if ((ptp_unit.flags & UNIT_ATT) == 0)
     return IORETURN (ptp_stopioe, SCPE_UNATT);
 #ifdef REAL_PC05
-if (pc05_putc (ptp_unit.buf, ptp_unit.fileref, &ptp_csr) == EOF) {
+if (pc05_data ('P', ptp_unit.fileref, &ptp_unit.buf, &ptp_csr) == EOF) {
+    clearerr (ptp_unit.fileref);
+    return SCPE_IOERR;
+  }
 #else
 if (putc (ptp_unit.buf, ptp_unit.fileref) == EOF) {
     sim_perror ("PTP I/O error");
@@ -389,7 +395,7 @@ t_stat reason;
 
 reason = attach_unit (uptr, cptr);
 #ifdef REAL_PC05
-if ((ptp_unit.flags & UNIT_ATT) == 0 && pc05_set_line(uptr) == 0) {
+if ((ptp_unit.flags & UNIT_ATT) == 0 && pc05_att_line(uptr) == 0) {
 #else
 if ((ptp_unit.flags & UNIT_ATT) == 0)
 #endif
@@ -401,6 +407,9 @@ return reason;
 t_stat ptp_detach (UNIT *uptr)
 {
 ptp_csr = ptp_csr | CSR_ERR;
+#ifdef REAL_PC05
+pc05_det_line();
+#endif
 return detach_unit (uptr);
 }
 
@@ -459,17 +468,17 @@ return "PC11 paper tape punch";
  *      set ptp enable
  *      att ptp /dev/tty01
  */
-int32 pc05_set_line(UNIT *uptr)
+int32 pc05_att_line (UNIT *uptr)
 {
 int32 fd = *uptr->fileref->_fileno;
 
-if (pc05_link_set == 1) return 0;	/* Already set */
+if (pc05_link_set == 1) return SCPE_OK;	/* Already set */
 
-                                /* Configure port reading             */
+			/* Configure port reading */
 memset(&pc05_tty, 0, sizeof(struct termios));
 if (tcgetattr(fd, &pc05_tty)) {
     printf("PTP/PTR : failed to get line attributes (%d)\n", errno);
-    return -1;
+    return SCPE_IOERR;
     }
 
 fcntl(fd, F_SETFL);
@@ -478,58 +487,43 @@ pc05.c_cc[VMIN] = 0;
 pc05.c_cc[VTIME] = 0;	/* no timeout */
 if (tcsetattr(fd, TCSANOW, &pc05_tty)) {
     printf("PTP/PTR : failed to set attributes for raw mode\n");
-    return -1;
+    return SCPE_IOERR;
     }
 
 pc05_link_set = 1;	/* Flag link set & ready */
 pc05_comm_lock = 0;
+return SCPE_OK;
 }
 
-int32 pc05_getc(FILE *p, int32 *csr)
+void pc05_det_line ()
 {
-int32 i = 0, fd = p->_fileno
-unsigned char cmd[4], res[2];
-
-while (pc05_comm_lock == 1 && i++ < 10)
-  msleep(4);
-pc05_comm_lock = 1;
-
-cmd[0] = 0xFF;
-cmd[1] = 'R';
-cmd[2] = 0x00;
-cmd[3] = 0xFF;
-
-if (write(fd, cmd, 4) != 4) {	/* Send command packet */
-    /* set  CSR_ERR */
-    pc05_comm_lock = 0;
-    return EOF;
-    }
-
-if (read(fd, res, 2) != 2 ||
-    res[0] != ~res[1]) {	/* Read data byte & 1-compl */
-    /* set CSR_ERR */
-    pc05_comm_lock = 0;
-    return EOF;
-    }
-
-*csr = (*csr | CSR_DONE) & ~CSR_ERR;
-pc05_comm_lock = 0;
-return res[0];
+if (pc05_link_set == 1)
+  pc05_link_set = 0;		/* Flag link cleared */
 }
 
-int32 pc05_putc (int32 buf, FILE *p, int32 *csr)
+int32 pc05_data (act, FILE *p, int32 *data, int32 *csr)
 {
 int32 i = 0, fd = p->_fileno;
-unsigned char cmd[4], res[2];
+unsigned char cmd[4] = { 0xFF, 0, 0, 0xFF }, res[4];
 
 while (pc05_comm_lock == 1 && i++ < 10)
   msleep(4);
 pc05_comm_lock = 1;
 
-cmd[0] = 0xFF;
-cmd[1] = 'W';
-cmd[2] = buf & 0xFF;
-cmd[3] = ~(buf & 0xFF);
+cmd[1] = act & 0xFF;
+switch (act) {
+    default  :	return EOF;
+		break;
+    case 'C' :	break;			/* Clear state machines */
+    case 'D' :	break;			/* State machine state */
+    case 'I' :	break;			/* Initialize PC05 (H/W reset) */
+		break;
+    case 'P' :	cmd[2] = *data & 0xFF;	/* Punch 1 frame */
+		break;
+    case 'R' :	break;			/* Read 1 frame */
+    case 'T' :	cmd[2] = *data & 0xFF;	/* Set watchdog control timer */
+		break;
+    }
 
 if (write(fd, cmd, 4) != 4) {	/* Send command packet */
     /* set  CSR_ERR */
@@ -537,14 +531,30 @@ if (write(fd, cmd, 4) != 4) {	/* Send command packet */
     return EOF;
     }
 
-if (read(fd, res, 2) != 2 ||
-    res[0] != ~res[1]) {	/* Read status byte & 1-compl */
+if (read(fd, res, 4) != 4 ||	/* Read data byte & 1-compl */
+    res[0] != ~res[1] ||
+    res[2] != ~res[3]) {
     /* set CSR_ERR */
     pc05_comm_lock = 0;
     return EOF;
     }
 
-*csr = *csr & ~CSR_ERR;
+switch (act) {
+    case 'C' :	*data = 0;
+		break;
+    case 'D' :	*data = res[0];
+		break;
+    case 'I' :	*data = res[2];
+		break;
+    case 'P' :	*csr = *csr & ~CSR_ERR;
+		break;
+    case 'R' :	*data = res[0];
+		*csr = (*csr | CSR_DONE) & ~CSR_ERR;
+		break;
+    case 'T' :	*data = res[0];
+		break;
+    }
+
 pc05_comm_lock = 0;
 return 0;
 }
