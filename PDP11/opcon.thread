@@ -843,7 +843,7 @@ return (ocp->S[SWR_08_15_PORT] * 256 + ocp->S[SWR_00_07_PORT]);
  *	      function returns the pointer to the received string.
  * Returns  : Pointer to received string
  */
-char *oc_read_line_p (char *prompt, char *cptr, int32 size, FILE *stream, int32 do_echo)
+char *oc_read_line_p (char *prompt, char *cptr, int32 size, FILE *stream, int32 sim_do_echo)
 {
 char *tptr = cptr, key_entry = 0;
 SERPORT cons0;
@@ -888,14 +888,15 @@ for (tptr = cptr; tptr < (cptr + size); tptr++) {	/* remove cr or nl */
         }
     }
 
-while (isspace (*cptr))
-    cptr++;			/* absorb spaces */
+if (0 == memcmp (cptr, "\xEF\xBB\xBF", 3))	/* Skip/ignore UTF8_BOM */
+    memmove (cptr, cptr + 3, strlen (cptr + 3));
+while (sim_isspace (*cptr))
+    cptr++;					/* absorb spaces */
+sim_trim_endspc (cptr);				/* trim trailing spc */
 
-if (*cptr == ';') {
-    if (do_echo)		/* echo comments if -v */
-	printf ("%s> %s\n", do_position(), cptr);
-    if (do_echo && sim_log)
-	fprintf (sim_log, "%s> %s\n", do_position(), cptr);
+if (*cptr == ';' || (*cptr == '#')) {		/* ignore comment */
+    if (sim_do_echo)		/* echo comments if -v */
+	sim_printf ("%s> %s\n", do_position(), cptr);
     *cptr = 0;
     }
 

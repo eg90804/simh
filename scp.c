@@ -3420,7 +3420,7 @@ t_stat do_cmd (int32 flag, CONST char *fcptr)
 return do_cmd_label (flag, fcptr, NULL);
 }
 
-#ifdef OPCON
+#if defined(OPCON_THR) || defined(OPCON_SER) || defined(OPCON_SHR)
 char *do_position(void)
 #else
 static char *do_position(void)

@@ -44,6 +44,8 @@
 #include "pdp11_defs.h"
 #define PT_DIS          0
 # ifdef REAL_PC05
+# include <unistd.h>
+# include <fcntl.h>
 # include <termio.h>
 # endif
 #endif
@@ -62,6 +64,10 @@ int32 pc05_fd = 0;
 int32 pc05_link_set = 0;
 struct termios pc05_tty;
 int32 pc05_comm_lock = 0;
+int32 pc05_att_line (UNIT *uptr);
+void pc05_det_line ();
+int32 pc05_data (char act, FILE *p, int32 *data, int32 *csr);
+#define msleep(n) usleep(n * 1000)
 #endif
 
 t_stat ptr_rd (int32 *data, int32 PA, int32 access);
@@ -286,7 +292,7 @@ t_stat reason;
 
 reason = attach_unit (uptr, cptr);
 #ifdef REAL_PC05
-if ((ptr_unit.flags & UNIT_ATT) == 0 && pc05_att_line(uptr) == 0) {
+if ((ptr_unit.flags & UNIT_ATT) == 0 && pc05_att_line(uptr) == 0)
 #else
 if ((ptr_unit.flags & UNIT_ATT) == 0)
 #endif
@@ -395,7 +401,7 @@ t_stat reason;
 
 reason = attach_unit (uptr, cptr);
 #ifdef REAL_PC05
-if ((ptp_unit.flags & UNIT_ATT) == 0 && pc05_att_line(uptr) == 0) {
+if ((ptp_unit.flags & UNIT_ATT) == 0 && pc05_att_line(uptr) == 0)
 #else
 if ((ptp_unit.flags & UNIT_ATT) == 0)
 #endif
@@ -470,7 +476,7 @@ return "PC11 paper tape punch";
  */
 int32 pc05_att_line (UNIT *uptr)
 {
-int32 fd = *uptr->fileref->_fileno;
+int32 fd = uptr->fileref->_fileno;
 
 if (pc05_link_set == 1) return SCPE_OK;	/* Already set */
 
@@ -483,8 +489,8 @@ if (tcgetattr(fd, &pc05_tty)) {
 
 fcntl(fd, F_SETFL);
 cfmakeraw(&pc05_tty);
-pc05.c_cc[VMIN] = 0;
-pc05.c_cc[VTIME] = 0;	/* no timeout */
+pc05_tty.c_cc[VMIN] = 0;
+pc05_tty.c_cc[VTIME] = 0;	/* no timeout */
 if (tcsetattr(fd, TCSANOW, &pc05_tty)) {
     printf("PTP/PTR : failed to set attributes for raw mode\n");
     return SCPE_IOERR;
@@ -501,7 +507,7 @@ if (pc05_link_set == 1)
   pc05_link_set = 0;		/* Flag link cleared */
 }
 
-int32 pc05_data (act, FILE *p, int32 *data, int32 *csr)
+int32 pc05_data (char act, FILE *p, int32 *data, int32 *csr)
 {
 int32 i = 0, fd = p->_fileno;
 unsigned char cmd[4] = { 0xFF, 0, 0, 0xFF }, res[4];
