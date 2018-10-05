@@ -1,8 +1,25 @@
-possible other changes
-  pdp11_lp.c : allow for serial line (or par port?) specification so that a real printer
-	       can be used i.s.o a file on disk.
+Work list
+  pdp11_lp.c : Add code to use a (mapped) serial line for use with a real printer.
+     status  : Work in progress.
+       what  : Minimal coded added as an initial tryout.
 
-  pdp11_cr.c : allow for serial line specification so that a card reader can be connected,
-               will also need code changes in other code of this file.
+  pdp11_cr.c : Add code to use a (mapped) serial line for communication with a real punchcard reader.
+     status  : Notes only
 
+  pdp11_pt.c : Add code o use a (mapped) serial line for communication with a real PC05.
+     status  : work in progress.
+       what  : Initial code added for attach, detach & service routines to use a simple packet
+               exchange between SIMH and he PC05.
+               Code will assume that both devices (punch & reader) are configured.
 
+Wish list
+  pdp11_tu.c : use a real TU56 (microcontroller)
+     status  : A controller exists, but not complete. A new design is being made by Swedish enthusiasts.
+     
+  pdp11_rk.c : use a real RK05 (microcontroller)
+     status  : Only a wish for the moment.
+     
+  pdp11_rl.c : use a real RL02
+     status  : Using a microcontroller/FPGA combo exits, but no support/help whatsoever from the creator.
+               Also, no real boards exists (yet).
+	       
