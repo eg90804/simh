@@ -60,13 +60,12 @@ int32 ptr_stopioe = 0;                                  /* stop on error */
 int32 ptp_csr = 0;                                      /* control/status */
 int32 ptp_stopioe = 0;                                  /* stop on error */
 #ifdef REAL_PC05
-int32 pc05_fd = 0;
-int32 pc05_link_set = 0;
+int32 pc05_fd = 0;					/* serial port fd */
+int32 pc05_link_set = 0;				/* link set flag */
 struct termios pc05_tty;
-int32 pc05_comm_lock = 0;
-int32 pc05_att_line (UNIT *uptr);
-void pc05_det_line ();
-int32 pc05_data (char act, FILE *p, int32 *data, int32 *csr);
+int32 pc05_att_line (UNIT *uptr);			/* (re)conf serial line */
+void pc05_det_line ();					/* detach line */
+int32 pc05_data (char act, FILE *p, int32 *data, int32 *csr); /* comm funcion */
 #define msleep(n) usleep(n * 1000)
 #endif
 
@@ -292,7 +291,7 @@ t_stat reason;
 
 reason = attach_unit (uptr, cptr);
 #ifdef REAL_PC05
-if ((ptr_unit.flags & UNIT_ATT) == 0 && pc05_att_line(uptr) == 0)
+if ((ptr_unit.flags & UNIT_ATT) == 0 && pc05_att_line(uptr) != SCPE_OK)
 #else
 if ((ptr_unit.flags & UNIT_ATT) == 0)
 #endif
@@ -367,7 +366,7 @@ if ((ptp_unit.flags & UNIT_ATT) == 0)
     return IORETURN (ptp_stopioe, SCPE_UNATT);
 #ifdef REAL_PC05
 if (pc05_data ('P', ptp_unit.fileref, &ptp_unit.buf, &ptp_csr) == EOF) {
-    clearerr (ptp_unit.fileref);
+    clearerr (ptp_unit.fileref); /* needed here? */
     return SCPE_IOERR;
   }
 #else
@@ -401,7 +400,7 @@ t_stat reason;
 
 reason = attach_unit (uptr, cptr);
 #ifdef REAL_PC05
-if ((ptp_unit.flags & UNIT_ATT) == 0 && pc05_att_line(uptr) == 0)
+if ((ptp_unit.flags & UNIT_ATT) == 0 && pc05_att_line(uptr) != SCPE_OK)
 #else
 if ((ptp_unit.flags & UNIT_ATT) == 0)
 #endif
@@ -478,8 +477,8 @@ int32 pc05_att_line (UNIT *uptr)
 {
 int32 fd = uptr->fileref->_fileno;
 
-if (pc05_link_set == 1) return SCPE_OK;	/* Already set */
-
+if (pc05_link_set == 1)			/* Already set */
+    return SCPE_OK;
 			/* Configure port reading */
 memset(&pc05_tty, 0, sizeof(struct termios));
 if (tcgetattr(fd, &pc05_tty)) {
@@ -488,16 +487,15 @@ if (tcgetattr(fd, &pc05_tty)) {
     }
 
 fcntl(fd, F_SETFL);
-cfmakeraw(&pc05_tty);
-pc05_tty.c_cc[VMIN] = 0;
-pc05_tty.c_cc[VTIME] = 0;	/* no timeout */
+cfmakeraw(&pc05_tty);		/* serial line to raw mode */
+pc05_tty.c_cc[VMIN] = 0;	/* Response packet is 4 bytes */
+pc05_tty.c_cc[VTIME] = 2;	/* wait up to 0.2 sec */
 if (tcsetattr(fd, TCSANOW, &pc05_tty)) {
     printf("PTP/PTR : failed to set attributes for raw mode\n");
     return SCPE_IOERR;
     }
 
 pc05_link_set = 1;	/* Flag link set & ready */
-pc05_comm_lock = 0;
 return SCPE_OK;
 }
 
@@ -511,10 +509,6 @@ int32 pc05_data (char act, FILE *p, int32 *data, int32 *csr)
 {
 int32 i = 0, fd = p->_fileno;
 unsigned char cmd[4] = { 0xFF, 0, 0, 0xFF }, res[4];
-
-while (pc05_comm_lock == 1 && i++ < 10)
-  msleep(4);
-pc05_comm_lock = 1;
 
 cmd[1] = act & 0xFF;
 switch (act) {
@@ -531,37 +525,32 @@ switch (act) {
 		break;
     }
 
-if (write(fd, cmd, 4) != 4) {	/* Send command packet */
-    /* set  CSR_ERR */
-    pc05_comm_lock = 0;
+		/* Send command packet */
+if (write(fd, cmd, 4) != 4) {
+    *csr = *csr | CSR_ERR;
     return EOF;
     }
 
 if (read(fd, res, 4) != 4 ||	/* Read data byte & 1-compl */
     res[0] != ~res[1] ||
     res[2] != ~res[3]) {
-    /* set CSR_ERR */
-    pc05_comm_lock = 0;
+    *csr = *csr | CSR_ERR;
     return EOF;
     }
 
 switch (act) {
     case 'C' :	*data = 0;
 		break;
-    case 'D' :	*data = res[0];
-		break;
     case 'I' :	*data = res[2];
 		break;
-    case 'P' :	*csr = *csr & ~CSR_ERR;
+    case 'P' :	*csr = *csr & ~CSR_ERR;		/* clear err */
 		break;
-    case 'R' :	*data = res[0];
-		*csr = (*csr | CSR_DONE) & ~CSR_ERR;
-		break;
+    case 'R' :	*csr = (*csr | CSR_DONE) & ~CSR_ERR; /* set done, clear err */
+    case 'D' :
     case 'T' :	*data = res[0];
 		break;
     }
 
-pc05_comm_lock = 0;
 return 0;
 }
 #endif
