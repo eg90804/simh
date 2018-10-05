@@ -9,7 +9,7 @@ gcc -std=gnu99 -U__STRICT_ANSI__  -O2 -finline-functions -fgcse-after-reload \
   -DSIM_GIT_COMMIT_ID=58406800a59ec4f8eb6df05dcaaedd93b72e7790\
   -DSIM_COMPILER="GCC Version: 4.9.2" -I . -D_GNU_SOURCE -DUSE_READER_THREAD\
   -DSIM_ASYNCH_IO -DHAVE_REGEX_H -DHAVE_DLOPEN=so -DHAVE_GLOB\
-  -DHAVE_SHM_OPEN  -DOPCON_THR \
+  -DHAVE_SHM_OPEN  -DOPCON_THR -DREAL_PC05 \
   PDP11/pdp11_fp.c PDP11/pdp11_cpu.c PDP11/pdp11_dz.c\
   PDP11/pdp11_cis.c PDP11/pdp11_lp.c PDP11/pdp11_rk.c PDP11/pdp11_rl.c\
   PDP11/pdp11_rp.c PDP11/pdp11_rx.c PDP11/pdp11_stddev.c PDP11/pdp11_sys.c\

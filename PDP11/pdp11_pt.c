@@ -475,7 +475,9 @@ return "PC11 paper tape punch";
  */
 int32 pc05_att_line (UNIT *uptr)
 {
-int32 fd = uptr->fileref->_fileno;
+FILE  *fp = uptr->fileref;
+int32 fd = fp->_fileno;
+int32 dummy;
 
 if (pc05_link_set == 1)			/* Already set */
     return SCPE_OK;
@@ -494,6 +496,9 @@ if (tcsetattr(fd, TCSANOW, &pc05_tty)) {
     printf("PTP/PTR : failed to set attributes for raw mode\n");
     return SCPE_IOERR;
     }
+
+if (pc05_data ('I', fp, &dummy, &dummy) == EOF || dummy != 0)
+  return SCPE_IOERR;
 
 pc05_link_set = 1;	/* Flag link set & ready */
 return SCPE_OK;
