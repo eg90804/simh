@@ -166,9 +166,12 @@ int sim_islower (int c);
 #ifdef islower
 #undef islower
 #endif
-#ifndef IN_SCP_C
 #define islower(chr) sim_islower (chr)
+int sim_isupper (int c);
+#ifdef isupper
+#undef isupper
 #endif
+#define isupper(chr) sim_isupper (chr)
 int sim_isalpha (int c);
 #ifdef isalpha
 #undef isalpha
@@ -187,9 +190,7 @@ int sim_isdigit (int c);
 #ifdef isdigit
 #undef isdigit
 #endif
-#ifndef IN_SCP_C
 #define isdigit(chr) sim_isdigit (chr)
-#endif
 int sim_isgraph (int c);
 #ifdef isgraph
 #undef isgraph
@@ -230,12 +231,6 @@ size_t sim_strlcpy (char *dst, const char *src, size_t size);
 #ifndef strcasecmp
 #define strcasecmp(str1, str2) sim_strcasecmp ((str1), (str2))
 #endif
-typedef void (*DIR_ENTRY_CALLBACK)(const char *directory, 
-                                   const char *filename,
-                                   t_offset FileSize,
-                                   const struct stat *filestat,
-                                   void *context);
-t_stat sim_dir_scan (const char *cptr, DIR_ENTRY_CALLBACK entry, void *context);
 CONST char *get_sim_opt (int32 opt, CONST char *cptr, t_stat *st);
 CONST char *get_sim_sw (CONST char *cptr);
 const char *put_switches (char *buf, size_t bufsize, uint32 sw);
@@ -361,6 +356,10 @@ extern FILEREF *sim_log_ref;                            /* log file file referen
 extern FILE *sim_deb;                                   /* debug file */
 extern FILEREF *sim_deb_ref;                            /* debug file file reference */
 extern int32 sim_deb_switches;                          /* debug display flags */
+extern size_t sim_deb_buffer_size;                      /* debug memory buffer size */
+extern char *sim_deb_buffer;                            /* debug memory buffer */
+extern size_t sim_debug_buffer_offset;                  /* debug memory buffer insertion offset */
+extern size_t sim_debug_buffer_inuse;                   /* debug memory buffer inuse count */
 extern struct timespec sim_deb_basetime;                /* debug base time for relative time output */
 extern DEVICE **sim_internal_devices;
 extern uint32 sim_internal_device_count;

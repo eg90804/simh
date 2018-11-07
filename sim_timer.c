@@ -776,6 +776,8 @@ static uint32 rtc_clock_calib_skip_idle[SIM_NTIMERS+1] = { 0 };/* Calibrations s
 static uint32 rtc_clock_calib_gap2big[SIM_NTIMERS+1] = { 0 };/* Calibrations skipped Gap Too Big */
 static uint32 rtc_clock_calib_backwards[SIM_NTIMERS+1] = { 0 };/* Calibrations skipped Clock Running Backwards */
 static uint32 sim_idle_cyc_ms = 0;                      /* Cycles per millisecond while not idling */
+static uint32 sim_idle_cyc_sleep = 0;                   /* Cycles per minimum sleep interval */
+static double sim_idle_end_time = 0.0;                  /* Time when last idle completed */
 
 UNIT sim_timer_units[SIM_NTIMERS+1];                    /* Clock assist units                         */
                                                         /* one for each timer and one for an internal */
@@ -982,8 +984,11 @@ if (last_idle_pct > (100 - sim_idle_calib_pct)) {
     return rtc_currd[tmr];                              /* avoid calibrating idle checks */
     }
 new_gtime = sim_gtime();
-if ((last_idle_pct == 0) && (delta_rtime != 0))
+if ((last_idle_pct == 0) && (delta_rtime != 0)) {
     sim_idle_cyc_ms = (uint32)((new_gtime - rtc_gtime[tmr]) / delta_rtime);
+    if ((sim_idle_rate_ms != 0) && (delta_rtime > 1))
+        sim_idle_cyc_sleep = (uint32)((new_gtime - rtc_gtime[tmr]) / (delta_rtime / sim_idle_rate_ms));
+    }
 if (sim_asynch_timer) {
     /* An asynchronous clock, merely needs to divide the number of */
     /* instructions actually executed by the clock rate. */
@@ -1282,6 +1287,7 @@ return SCPE_OK;
 
 REG sim_timer_reg[] = {
     { DRDATAD (IDLE_CYC_MS,      sim_idle_cyc_ms,        32, "Cycles Per Millisecond"), PV_RSPC|REG_RO},
+    { DRDATAD (IDLE_CYC_SLEEP,   sim_idle_cyc_sleep,     32, "Cycles Per Minimum Sleep"), PV_RSPC|REG_RO},
     { DRDATAD (IDLE_STABLE,      sim_idle_stable,        32, "IDLE stability delay"), PV_RSPC},
     { DRDATAD (ROM_DELAY,        sim_rom_delay,          32, "ROM memory reference delay"), PV_RSPC|REG_RO},
     { DRDATAD (TICK_RATE_0,      rtc_hz[0],              32, "Timer 0 Ticks Per Second") },
@@ -1345,12 +1351,21 @@ return SCPE_OK;
 
 t_stat sim_timer_set_idle_pct (int32 flag, CONST char *cptr)
 {
-t_stat r;
+t_stat r = SCPE_OK;
 int32 newpct;
+char gbuf[CBUFSIZE];
 
 if (cptr == NULL)
     return SCPE_ARG;
-newpct = (int32) get_uint (cptr, 10, 100, &r);
+cptr = get_glyph_nc (cptr, gbuf, 0);              /* get argument */
+if (isdigit (gbuf[0]))
+    newpct = (int32) get_uint (cptr, 10, 100, &r);
+else {
+    if (MATCH_CMD (gbuf, "ALWAYS") == 0)
+        newpct = 0;
+    else
+        r = SCPE_ARG;
+    }
 if ((r != SCPE_OK) || (newpct == (int32)(sim_idle_calib_pct)))
     return r;
 if (newpct == 0)
@@ -1507,6 +1522,7 @@ t_bool sim_idle (uint32 tmr, int sin_cyc)
 uint32 w_ms, w_idle, act_ms;
 int32 act_cyc;
 static t_bool in_nowait = FALSE;
+double cyc_since_idle;
 
 if (rtc_clock_catchup_pending[tmr]) {                   /* Catchup clock tick pending? */
     sim_debug (DBG_CAL, &sim_timer_dev, "sim_idle(tmr=%d, sin_cyc=%d) - accelerating pending catch-up tick before idling %s\n", tmr, sin_cyc, sim_uname (sim_clock_unit[tmr]));
@@ -1556,8 +1572,11 @@ if (_rtcn_tick_catchup_check(tmr, 0)) {
    means something, while not idling when it isn't enabled.  
    */
 sim_debug (DBG_TRC, &sim_timer_dev, "sim_idle(tmr=%d, sin_cyc=%d)\n", tmr, sin_cyc);
-if (sim_idle_cyc_ms == 0)
+if (sim_idle_cyc_ms == 0) {
     sim_idle_cyc_ms = (rtc_currd[tmr] * rtc_hz[tmr]) / 1000;/* cycles per msec */
+    if (sim_idle_rate_ms != 0)
+        sim_idle_cyc_sleep = (rtc_currd[tmr] * rtc_hz[tmr]) / (1000 / sim_idle_rate_ms);/* cycles per sleep */
+    }
 if ((sim_idle_rate_ms == 0) || (sim_idle_cyc_ms == 0)) {/* not possible? */
     sim_interval -= sin_cyc;
     sim_debug (DBG_IDL, &sim_timer_dev, "not possible idle_rate_ms=%d - cyc/ms=%d\n", sim_idle_rate_ms, sim_idle_cyc_ms);
@@ -1585,11 +1604,16 @@ if (sim_clock_queue == QUEUE_LIST_END)
     sim_debug (DBG_IDL, &sim_timer_dev, "sleeping for %d ms - pending event in %d instructions\n", w_ms, sim_interval);
 else
     sim_debug (DBG_IDL, &sim_timer_dev, "sleeping for %d ms - pending event on %s in %d instructions\n", w_ms, sim_uname(sim_clock_queue), sim_interval);
+cyc_since_idle = sim_gtime() - sim_idle_end_time;       /* time since prior idle */
 act_ms = sim_idle_ms_sleep (w_ms);                      /* wait */
 rtc_clock_time_idled[tmr] += act_ms;
 act_cyc = act_ms * sim_idle_cyc_ms;
-act_cyc += (sim_idle_cyc_ms * sim_idle_rate_ms) / 2;    /* account for half an interval's worth of cycles */
+if (cyc_since_idle > sim_idle_cyc_sleep)
+    act_cyc -= sim_idle_cyc_sleep / 2;                  /* account for half an interval's worth of cycles */
+else
+    act_cyc -= (int32)cyc_since_idle;                   /* acount for cycles executed */
 sim_interval = sim_interval - act_cyc;                  /* count down sim_interval to reflect idle period */
+sim_idle_end_time = sim_gtime();                        /* save idle completed time */
 if (sim_clock_queue == QUEUE_LIST_END)
     sim_debug (DBG_IDL, &sim_timer_dev, "slept for %d ms - pending event in %d instructions\n", act_ms, sim_interval);
 else
@@ -2574,7 +2598,12 @@ if (usec_delay < 0.0) {
     sim_debug (DBG_QUE, &sim_timer_dev, "sim_timer_activate_after(%s, %.0f usecs) - surprising usec value\n", 
                sim_uname(uptr), usec_delay);
     }
-uptr->usecs_remaining = 0.0;
+if ((sim_is_running) || (tmr <= SIM_NTIMERS))
+    uptr->usecs_remaining = 0.0;
+else {                                      /* defer non timer wallclock activations until a calibrated timer is in effect */
+    uptr->usecs_remaining = usec_delay;
+    usec_delay = 0;
+    }
 /* 
  * Handle long delays by aligning with the calibrated timer's calibration
  * activities.  Delays which would expire prior to the next calibration
@@ -2588,6 +2617,8 @@ inst_per_usec = sim_timer_inst_per_sec () / 1000000.0;
 inst_delay_d = floor(inst_per_usec * usec_delay);
 inst_delay = (int32)inst_delay_d;
 if ((inst_delay == 0) && (usec_delay != 0))
+    inst_delay_d = inst_delay = 1;  /* Minimum non-zero delay is 1 instruction */
+if (uptr->usecs_remaining != 0.0)   /* No calibrated timer yet, wait one cycle */
     inst_delay_d = inst_delay = 1;  /* Minimum non-zero delay is 1 instruction */
 if ((sim_calb_tmr != -1) && (rtc_hz[sim_calb_tmr])) {       /* Calibrated Timer available? */
     int32 inst_til_tick = sim_activate_time (&sim_timer_units[sim_calb_tmr]) - 1;
