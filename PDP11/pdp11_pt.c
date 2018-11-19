@@ -67,6 +67,8 @@ int32 pc05_att_line (UNIT *uptr);			/* (re)conf serial line */
 void pc05_det_line ();					/* detach line */
 int32 pc05_data (char act, FILE *p, int32 *data, int32 *csr); /* comm funcion */
 #define msleep(n) usleep(n * 1000)
+#define PC05_PUNCH_INTERVAL 25000			/* 25 millisec */
+#define PC05_READER_INTERVAL 3500			/* 3.5 millisec */
 #endif
 
 t_stat ptr_rd (int32 *data, int32 PA, int32 access);
@@ -254,6 +256,7 @@ if ((ptr_unit.flags & UNIT_ATT) == 0)
 if ((temp = pc05_data('R', ptr_unit.fileref, &temp, &ptr_csr)) == EOF) {
   return SCPE_OK;
   }
+sim_activate_after(uptr, PC05_READER_INTERVAL);
 #else
 if ((temp = getc (ptr_unit.fileref)) == EOF) {
     if (feof (ptr_unit.fileref)) {
@@ -369,6 +372,7 @@ if (pc05_data ('P', ptp_unit.fileref, &ptp_unit.buf, &ptp_csr) == EOF) {
     clearerr (ptp_unit.fileref); /* needed here? */
     return SCPE_IOERR;
   }
+sim_activate_after(uptr, PC05_PUNCH_INTERVAL);
 #else
 if (putc (ptp_unit.buf, ptp_unit.fileref) == EOF) {
     sim_perror ("PTP I/O error");
