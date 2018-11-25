@@ -60,14 +60,12 @@ int32 ptr_stopioe = 0;                                  /* stop on error */
 int32 ptp_csr = 0;                                      /* control/status */
 int32 ptp_stopioe = 0;                                  /* stop on error */
 #ifdef REAL_PC05
-int32 pc05_fd = 0;					/* serial port fd */
 int32 pc05_link_set = 0;				/* link set flag */
 struct termios pc05_tty;
 int32 pc05_att_line (UNIT *uptr);			/* (re)conf serial line */
 void pc05_det_line ();					/* detach line */
 int32 pc05_data (char act, FILE *p, int32 *data, int32 *csr); /* comm funcion */
-#define msleep(n) usleep(n * 1000)
-#define PC05_PUNCH_INTERVAL 25000			/* 25 millisec */
+#define PC05_PUNCH_INTERVAL 20000			/* 25 millisec */
 #define PC05_READER_INTERVAL 3500			/* 3.5 millisec */
 #endif
 
@@ -253,9 +251,8 @@ if (ptr_csr & CSR_IE) SET_INT (PTR);
 if ((ptr_unit.flags & UNIT_ATT) == 0)
     return IORETURN (ptr_stopioe, SCPE_UNATT);
 #ifdef REAL_PC05
-if ((temp = pc05_data('R', ptr_unit.fileref, &temp, &ptr_csr)) == EOF) {
-  return SCPE_OK;
-  }
+if ((temp = pc05_data('R', ptr_unit.fileref, &temp, &ptr_csr)) == EOF)
+    return SCPE_OK;
 sim_activate_after(uptr, PC05_READER_INTERVAL);
 #else
 if ((temp = getc (ptr_unit.fileref)) == EOF) {
@@ -270,7 +267,7 @@ if ((temp = getc (ptr_unit.fileref)) == EOF) {
     }
 ptr_csr = (ptr_csr | CSR_DONE) & ~CSR_ERR;
 #endif
-ptr_unit.buf = temp & 0377;
+ptr_unit.buf = temp;
 ptr_unit.pos = ptr_unit.pos + 1;
 return SCPE_OK;
 }
@@ -494,7 +491,7 @@ if (tcgetattr(fd, &pc05_tty)) {
 
 fcntl(fd, F_SETFL);
 cfmakeraw(&pc05_tty);		/* serial line to raw mode */
-pc05_tty.c_cc[VMIN] = 0;	/* Response packet is 4 bytes */
+pc05_tty.c_cc[VMIN] = 4;	/* Response packet is 4 bytes */
 pc05_tty.c_cc[VTIME] = 2;	/* wait up to 0.2 sec */
 if (tcsetattr(fd, TCSANOW, &pc05_tty)) {
     printf("PTP/PTR : failed to set attributes for raw mode\n");
@@ -511,7 +508,7 @@ return SCPE_OK;
 void pc05_det_line ()
 {
 if (pc05_link_set == 1)
-  pc05_link_set = 0;		/* Flag link cleared */
+    pc05_link_set = 0;		/* Flag link cleared */
 }
 
 int32 pc05_data (char act, FILE *p, int32 *data, int32 *csr)
