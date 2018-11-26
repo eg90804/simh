@@ -158,7 +158,7 @@ DEVICE ch_dev = {
     1, 8, 16, 1, 8, 16,
     NULL, NULL, &ch_reset,
     NULL, &ch_attach, &ch_detach,
-    &ch_dib, DEV_DISABLE | DEV_DIS | DEV_UBUS | DEV_DEBUG,
+    &ch_dib, DEV_DISABLE | DEV_DIS | DEV_UBUS | DEV_DEBUG | DEV_MUX,
     0, ch_debug, NULL, NULL, &ch_help, &ch_help_attach, NULL,
     &ch_description
   };
@@ -336,7 +336,7 @@ t_stat ch_rd (int32 *data, int32 PA, int32 access)
 
 void ch_clear (void)
 {
-  status = 0;
+  status = TXD;
   rx_count = 0;
   tx_count = 0;
 
@@ -448,7 +448,7 @@ t_stat ch_reset (DEVICE *dptr)
 
 t_stat ch_show_peer (FILE* st, UNIT* uptr, int32 val, CONST void* desc)
 {
-  fprintf (st, "peer=%s", peer);
+  fprintf (st, "peer=%s", peer[0] ? peer : "unspecified");
   return SCPE_OK;
 }
 
@@ -471,7 +471,10 @@ t_stat ch_set_peer (UNIT* uptr, int32 val, CONST char* cptr, void* desc)
 
 t_stat ch_show_node (FILE* st, UNIT* uptr, int32 val, CONST void* desc)
 {
-  fprintf (st, "node=%o", address);
+  if (address == -1)
+    fprintf (st, "node=unspecified");
+  else
+    fprintf (st, "node=%o", address);
   return SCPE_OK;
 }
 
