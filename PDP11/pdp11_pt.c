@@ -64,12 +64,8 @@ int32 pc05_link_set = 0;				/* link set flag */
 struct termios pc05_tty;
 int32 pc05_att_line (UNIT *uptr);			/* (re)conf serial line */
 void pc05_det_line ();					/* detach line */
-int32 pc05_data (char act, FILE *p, int32 *data, int32 *csr); /* comm funcion */
-#ifdef HZ = 50
-#define PC05_PUNCH_INTERVAL 21820			/* ~22 millisec */
-#else
-#define PC05_PUNCH_INTERVAL 18200			/* ~18 millisec */
-#endif
+int32 pc05_cmd (char act, FILE *p, int32 *data, int32 *csr); /* comm funcion */
+#define PC05_PUNCH_INTERVAL 21820			/* ~22 millisec, 18200 for 60 Hz */
 #define PC05_READER_INTERVAL 3335			/* ~3.3 millisec */
 #endif
 
@@ -255,7 +251,7 @@ if (ptr_csr & CSR_IE) SET_INT (PTR);
 if ((ptr_unit.flags & UNIT_ATT) == 0)
     return IORETURN (ptr_stopioe, SCPE_UNATT);
 #ifdef REAL_PC05
-if ((temp = pc05_data('R', ptr_unit.fileref, &temp, &ptr_csr)) == EOF)
+if ((temp = pc05_cmd('R', ptr_unit.fileref, &temp, &ptr_csr)) == EOF)
     return SCPE_OK;
 sim_activate_after(uptr, PC05_READER_INTERVAL);
 #else
@@ -369,7 +365,7 @@ if (ptp_csr & CSR_IE)
 if ((ptp_unit.flags & UNIT_ATT) == 0)
     return IORETURN (ptp_stopioe, SCPE_UNATT);
 #ifdef REAL_PC05
-if (pc05_data ('P', ptp_unit.fileref, &ptp_unit.buf, &ptp_csr) == EOF) {
+if (pc05_cmd ('P', ptp_unit.fileref, &ptp_unit.buf, &ptp_csr) == EOF) {
     clearerr (ptp_unit.fileref); /* needed here? */
     return SCPE_IOERR;
   }
@@ -502,7 +498,7 @@ if (tcsetattr(fd, TCSANOW, &pc05_tty)) {
     return SCPE_IOERR;
     }
 
-if (pc05_data ('I', fp, &dummy, &dummy) == EOF || dummy != 0)
+if (pc05_cmd ('I', fp, &dummy, &dummy) == EOF || dummy != 0)
   return SCPE_IOERR;
 
 pc05_link_set = 1;	/* Flag link set & ready */
@@ -515,7 +511,7 @@ if (pc05_link_set == 1)
     pc05_link_set = 0;		/* Flag link cleared */
 }
 
-int32 pc05_data (char act, FILE *p, int32 *data, int32 *csr)
+int32 pc05_cmd (char act, FILE *p, int32 *data, int32 *csr)
 {
 int32 i = 0, fd = p->_fileno;
 unsigned char cmd[4] = { 0xFF, 0, 0, 0xFF }, res[4];
@@ -536,44 +532,33 @@ switch (act) {
 		break;
     }
 
-		/* Send command packet */
+	/* Send command packet */
 if (write(fd, cmd, 4) != 4) {
     *csr = *csr | CSR_ERR;
     return EOF;
     }
-	
+
+	/* Conditional response returned */
+if (act == 'I' || act == 'R' || act == 'S') {
+  if (read(fd, res, 2) != 2) {
+    *csr = *csr | CSR_ERR;
+    return EOF;
+    }
+  *data = res[0];
+}
+
+	/* Post processing */
 switch (act) {
     case 'C' :	*data = 0;
-		break;
-    case 'I' :	if (read(fd, res, 2) != 2)
-	          *csr = *csr | CSR_ERR;
-		  return EOF;
-                  }
-	        *data = res[0];
-		break;
+    case 'D' :
+    case 'I' :
+    case 'T' :  break;
     case 'P' :	*csr = *csr & ~CSR_ERR;		/* clear err */
 		break;
-    case 'R' :  if (read(fd, res, 2) != 2)
-	          *csr = *csr | CSR_ERR;
-		  return EOF;
-                  }
-                *data = res[0];
-                *csr = (*csr | CSR_DONE) & ~CSR_ERR; /* set done, clear err */
+    case 'R' :  *csr = (*csr | CSR_DONE) & ~CSR_ERR; /* set done, clear err */
 	        break;
-    case 'S' :  if (read(fd, res, 2) != 2)
-	          *csr = *csr | CSR_ERR;
-		  return EOF;
-                  }
-                *data = res[0];
-                /* add proper logic to set csr bits.  */
+    case 'S' :  /* add proper logic to set csr bits.  */
                 *csr = 0;
-    case 'D' :
-    case 'T' :	if (read(fd, res, 2) != 2)
-	          *csr = *csr | CSR_ERR;
-		  return EOF;
-                  }
-                *data = res[0];
-		break;
     }
 
 return 0;

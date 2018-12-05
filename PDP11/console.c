@@ -12,6 +12,7 @@
 #include <sys/ipc.h>
 #include <sys/shm.h>
 #include <time.h>
+#include <sys/resource.h>
 #include <signal.h>
 #include <fcntl.h>
 #include <errno.h>
@@ -266,6 +267,7 @@ int main(int ac, char **av)
   end_prog = 0;
 
   signal(SIGHUP, sighan);
+  setprio(PRIO_PROCESS, 0, -20);
 
 #ifdef DEBUG
   if ( ac > 1 && av[1][0] == '-' && av[1][1] == 'd')
@@ -421,6 +423,7 @@ int main(int ac, char **av)
         case 11 : c_cnt = 0;
                   break;
         }
+      msleep(10);
       }
     else { 					/* In 'interactive' mode      */
       oc_send_S(oc_fd, ocp);			/* Update the status leds     */

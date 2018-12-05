@@ -357,14 +357,12 @@ R = sim_os_msec();
 sim_debug (OCDEB_SVC, &oc_dev, "oc_svc : delta = %d\n", R - resched);
 
 if ((R - resched) < OC_MINVAL) {         /* sufficient time passed by? */
-//    sim_activate_after (uptr, OC_MINVAL);       /* reschedule */
-    sim_activate_after (uptr, 1000);       /* reschedule */
+    sim_activate_after (uptr, OC_INTERVAL);       /* reschedule */
     return 0;
     }
 resched = R;					/* set as new marker */
 oc_console ();
-//sim_activate_after (uptr, OC_INTERVAL);         /* reschedule */
-sim_activate_after (uptr, 1000);         /* reschedule */
+sim_activate_after (uptr, OC_INTERVAL);         /* reschedule */
 #endif    
 
 return SCPE_OK;
@@ -1147,10 +1145,12 @@ sim_debug (OCDEB_TRC, &oc_dev, "oc_run_thread : called\n");
 ocp->A[0] = 0xFF;		/* signal main thread */
 
 while (*(int*)end_thr == 0) {
-    if (!ocp->HALT)		/* if 0, we are not interactive */
+    if (!ocp->HALT) {		/* if 0, we are not interactive */
         oc_console ();
+        msleep (10);	/* 100 transmissions per second */
+        }
     else
-        msleep(20); /* sleep if in interactive mode to avoid cpu hogging */
+        msleep (40); /* sleep if in interactive mode to avoid cpu hogging */
     }
 return ((void *)0);
 }

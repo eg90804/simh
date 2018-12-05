@@ -21,6 +21,7 @@ gcc -std=gnu99 -U__STRICT_ANSI__  -O2 -finline-functions -fgcse-after-reload \
   PDP11/pdp11_rc.c PDP11/pdp11_kg.c PDP11/pdp11_ke.c PDP11/pdp11_dc.c\
   PDP11/pdp11_dmc.c PDP11/pdp11_kmc.c PDP11/pdp11_dup.c PDP11/pdp11_rs.c\
   PDP11/opcon.c PDP11/pdp11_vt.c PDP11/pdp11_td.c PDP11/pdp11_rom.c PDP11/pdp11_io_lib.c\
+  PDP11/pdp11_ch.c \
   scp.c sim_console.c sim_fio.c sim_timer.c sim_sock.c sim_tmxr.c sim_ether.c\
   sim_tape.c sim_disk.c sim_serial.c sim_video.c sim_imd.c sim_card.c\
   -DVM_PDP11 -I PDP11 -DHAVE_TAP_NETWORK -DUSE_NETWORK\
