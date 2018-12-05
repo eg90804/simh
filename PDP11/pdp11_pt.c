@@ -65,8 +65,12 @@ struct termios pc05_tty;
 int32 pc05_att_line (UNIT *uptr);			/* (re)conf serial line */
 void pc05_det_line ();					/* detach line */
 int32 pc05_data (char act, FILE *p, int32 *data, int32 *csr); /* comm funcion */
-#define PC05_PUNCH_INTERVAL 20000			/* 25 millisec */
-#define PC05_READER_INTERVAL 3500			/* 3.5 millisec */
+#ifdef HZ = 50
+#define PC05_PUNCH_INTERVAL 21820			/* ~22 millisec */
+#else
+#define PC05_PUNCH_INTERVAL 18200			/* ~18 millisec */
+#endif
+#define PC05_READER_INTERVAL 3335			/* ~3.3 millisec */
 #endif
 
 t_stat ptr_rd (int32 *data, int32 PA, int32 access);
@@ -491,7 +495,7 @@ if (tcgetattr(fd, &pc05_tty)) {
 
 fcntl(fd, F_SETFL);
 cfmakeraw(&pc05_tty);		/* serial line to raw mode */
-pc05_tty.c_cc[VMIN] = 4;	/* Response packet is 4 bytes */
+pc05_tty.c_cc[VMIN] = 2;	/* Response packet is 4 bytes */
 pc05_tty.c_cc[VTIME] = 2;	/* wait up to 0.2 sec */
 if (tcsetattr(fd, TCSANOW, &pc05_tty)) {
     printf("PTP/PTR : failed to set attributes for raw mode\n");
@@ -520,13 +524,14 @@ cmd[1] = act & 0xFF;
 switch (act) {
     default  :	return EOF;
 		break;
-    case 'C' :	break;			/* Clear state machines */
-    case 'D' :	break;			/* State machine state */
-    case 'I' :	break;			/* Initialize PC05 (H/W reset) */
+    case 'C' :				/* Clear state machines */
+    case 'D' :				/* State machine state */
+    case 'S' :				/* Reader/punch status */
+    case 'I' :				/* Initialize PC05 (H/W reset) */
+    case 'R' :				/* Read 1 frame */
 		break;
     case 'P' :	cmd[2] = *data & 0xFF;	/* Punch 1 frame */
 		break;
-    case 'R' :	break;			/* Read 1 frame */
     case 'T' :	cmd[2] = *data & 0xFF;	/* Set watchdog control timer */
 		break;
     }
@@ -536,24 +541,38 @@ if (write(fd, cmd, 4) != 4) {
     *csr = *csr | CSR_ERR;
     return EOF;
     }
-
-if (read(fd, res, 4) != 4 ||	/* Read data byte & 1-compl */
-    res[0] != ~res[1] ||
-    res[2] != ~res[3]) {
-    *csr = *csr | CSR_ERR;
-    return EOF;
-    }
-
+	
 switch (act) {
     case 'C' :	*data = 0;
 		break;
-    case 'I' :	*data = res[2];
+    case 'I' :	if (read(fd, res, 2) != 2)
+	          *csr = *csr | CSR_ERR;
+		  return EOF;
+                  }
+	        *data = res[0];
 		break;
     case 'P' :	*csr = *csr & ~CSR_ERR;		/* clear err */
 		break;
-    case 'R' :	*csr = (*csr | CSR_DONE) & ~CSR_ERR; /* set done, clear err */
+    case 'R' :  if (read(fd, res, 2) != 2)
+	          *csr = *csr | CSR_ERR;
+		  return EOF;
+                  }
+                *data = res[0];
+                *csr = (*csr | CSR_DONE) & ~CSR_ERR; /* set done, clear err */
+	        break;
+    case 'S' :  if (read(fd, res, 2) != 2)
+	          *csr = *csr | CSR_ERR;
+		  return EOF;
+                  }
+                *data = res[0];
+                /* add proper logic to set csr bits.  */
+                *csr = 0;
     case 'D' :
-    case 'T' :	*data = res[0];
+    case 'T' :	if (read(fd, res, 2) != 2)
+	          *csr = *csr | CSR_ERR;
+		  return EOF;
+                  }
+                *data = res[0];
 		break;
     }
 
