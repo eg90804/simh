@@ -23,7 +23,7 @@
 #define msleep(a) usleep((a * 1000))
 
 int end_prog = 0;
-void sighan() { end_prog = 1; }
+void sighangup() { end_prog = 1; }
 struct termios tty;
 
 //#define DEBUG 1
@@ -262,12 +262,12 @@ int main(int ac, char **av)
   struct termios savetty;
   extern struct termios tty;
   extern int errno, end_prog;
-  extern void sighan();
+  extern void sighangup();
 
   end_prog = 0;
 
-  signal(SIGHUP, sighan);
-  setprio(PRIO_PROCESS, 0, -20);
+  signal(SIGHUP, sighangup);
+  setpriority(PRIO_PROCESS, 0, -19);
 
 #ifdef DEBUG
   if ( ac > 1 && av[1][0] == '-' && av[1][1] == 'd')
@@ -300,12 +300,12 @@ int main(int ac, char **av)
     printf("  CMD from SIMH      : %c\n", ocp->to_cp);
     printf("  CMD to SIMH        : %c\n", ocp->fm_cp);
     printf("  Acknowledge mask   : %d\n", ocp->ACK);
-    printf("  Address array      : 0x%08o,0x%08o,0x%08o,0x%08o\n",
-    		ocp->A[0], ocp->A[1], ocp->A[2], ocp->A[3]);
-    printf("                       0x%08o,0x%08o,0x%08o,0x%08o\n",
-    		ocp->A[4], ocp->A[5], ocp->A[6], ocp->A[7]);
-    printf("  Data array         : 0x%06o,0x%06o,0x%06o,0x%06o\n",
-    		ocp->D[0], ocp->D[1], ocp->D[2], ocp->D[3]);
+    printf("  Address array      : [USER   D : 0x%08o] [USER   I : 0x%08o]\n",ocp->A[ADDR_USERI], ocp->A[ADDR_USERD]);
+    printf("                       [SUPER  D : 0x%08o] [SUPER  I : 0x%08o]\n",ocp->A[ADDR_SUPRI], ocp->A[ADDR_SUPRD]);
+    printf("                       [KERNEL D : 0x%08o] [KERNEL I : 0x%08o]\n",ocp->A[ADDR_KERNI], ocp->A[ADDR_KERND]);
+    printf("                       [CONS   P : 0x%08o] [PROG   P : 0x%08o]\n",ocp->A[ADDR_CONSP], ocp->A[ADDR_PROGP]);
+    printf("  Data array         : [DATAPATH : 0x%06o] [u ADDR   : 0x%06o]\n",ocp->D[DISP_SHFR],  ocp->D[DISP_FPP]);
+    printf("                     : [BUS REG  : 0x%06o] [DISP REG : 0x%06o]\n",ocp->D[DISP_BR],    ocp->D[DISP_DR]);
     printf("  Switch data array: 0x%02X,0x%02X,0x%02X,0x%02X,0x%02X\n",
     	ocp->S[0], ocp->S[1], ocp->S[2], ocp->S[3], ocp->S[4]);
     }
@@ -423,7 +423,6 @@ int main(int ac, char **av)
         case 11 : c_cnt = 0;
                   break;
         }
-      msleep(10);
       }
     else { 					/* In 'interactive' mode      */
       oc_send_S(oc_fd, ocp);			/* Update the status leds     */
