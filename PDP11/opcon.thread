@@ -1145,10 +1145,8 @@ sim_debug (OCDEB_TRC, &oc_dev, "oc_run_thread : called\n");
 ocp->A[0] = 0xFF;		/* signal main thread */
 
 while (*(int*)end_thr == 0) {
-    if (!ocp->HALT) {		/* if 0, we are not interactive */
+    if (!ocp->HALT)		/* if 0, we are not interactive */
         oc_console ();
-        msleep (10);	/* 100 transmissions per second */
-        }
     else
         msleep (40); /* sleep if in interactive mode to avoid cpu hogging */
     }
