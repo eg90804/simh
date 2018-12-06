@@ -76,6 +76,7 @@
 #include <ctype.h>
 #include <termio.h>
 #include <sys/ioctl.h>
+#include <sys/resource.h>
 
 /* Declarations & references for required external routines & variables. */
 extern SERHANDLE sim_open_serial (char *name, TMLN *lp, t_stat *status);
@@ -230,6 +231,7 @@ if (oc_console_pid == 0) {	/* I'm the child */
 /* Try for 5 seconds waiting for 'to_cp' to become cleared */
 for (i = 0; ocp->to_cp != 0 && i < 50; i++)
   msleep(100);
+setpriority(PRIO_PROCESS, 0, 19);
 
 if (ocp->to_cp != 0) {				/* sub task did not start     */
   kill(oc_console_pid, SIGKILL);
