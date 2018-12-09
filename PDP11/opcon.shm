@@ -748,7 +748,7 @@ for (tptr = cptr; tptr < (cptr + size); tptr++) {	/* remove cr or nl */
         break;
         }
     }
-if (0 == memcmp (cptr, "\xEF\xBB\xBF", 3))		* Skip/ignore UTF8_BOM */
+if (0 == memcmp (cptr, "\xEF\xBB\xBF", 3))		/* Skip/ignore UTF8_BOM */
     memmove (cptr, cptr + 3, strlen (cptr + 3));
 while (sim_isspace (*cptr))
     cptr++;						/* absorb spaces */

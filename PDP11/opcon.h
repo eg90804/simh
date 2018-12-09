@@ -223,6 +223,7 @@ void    oc_send_AD (int a, OC_ST *b);
 void    oc_send_ADS (int a, OC_ST *b);
 void    oc_send_S (int a, OC_ST *b);
 void    oc_send_CMD (uint8 cmd, uint8 mask);
+int     oc_read (int fd, char *b, int c, int d);
 #endif
 
 #if defined(OPCON_THR) || defined(OPCON_SER)
@@ -234,6 +235,7 @@ void    oc_send_ADS (void);
 void    oc_send_S (void);
 void    oc_toggle_ack (uint8 mask);
 void    oc_toggle_clear (void);
+int     oc_read (SERHANDLE channel, char *b, int c, int d);
 #endif
 
 #ifdef OPCON_THR
@@ -246,7 +248,6 @@ uint16  oc_get_DTA (void);
 t_bool  oc_get_HLT (void);
 int     oc_get_RTR (void);
 t_bool  oc_poll (SERHANDLE channel, int amount);
-int     oc_read (SERHANDLE channel, char *b, int c, int d);
 char   *oc_read_line_p (char *prompt, char *cptr, int32 size, FILE *stream, int32 do_echo);
 void    oc_set_master (t_bool flag);
 void    oc_set_mmu (void);

@@ -1,30 +1,31 @@
-# Quick command for ttylinux
+# Multi thread version
 set -x
-
-cp PDP11/opcon.thread PDP11/opcon.c #code for threading & direct serial port
-
-gcc -std=gnu99 -U__STRICT_ANSI__  -O2 -finline-functions -fgcse-after-reload \
+#
+cp PDP11/opcon.thread PDP11/opcon.c
+#
+gcc -std=gnu99 -U__STRICT_ANSI__ -finline-functions -fgcse-after-reload\
  -fpredictive-commoning -fipa-cp-clone -fno-unsafe-loop-optimizations\
  -fno-strict-overflow -Wno-unused-result\
-  -DSIM_GIT_COMMIT_ID=58406800a59ec4f8eb6df05dcaaedd93b72e7790\
-  -DSIM_COMPILER="GCC Version: 4.8.5" -I . -D_GNU_SOURCE -DUSE_READER_THREAD\
+  -DVM_PDP11 -DSIM_GIT_COMMIT_ID=58406800a59ec4f8eb6df05dcaaedd93b72e7790\
+  -DSIM_COMPILER="GCC Version: 4.8.5" -D_GNU_SOURCE -DUSE_READER_THREAD\
   -DSIM_ASYNCH_IO -DHAVE_REGEX_H -DHAVE_DLOPEN=so -DHAVE_GLOB\
-  -DHAVE_SHM_OPEN  -DOPCON_THR -DREAL_PC05 \
-  PDP11/pdp11_fp.c PDP11/pdp11_cpu.c PDP11/pdp11_dz.c\
-  PDP11/pdp11_cis.c PDP11/pdp11_lp.c PDP11/pdp11_rk.c PDP11/pdp11_rl.c\
-  PDP11/pdp11_rp.c PDP11/pdp11_rx.c PDP11/pdp11_stddev.c PDP11/pdp11_sys.c\
-  PDP11/pdp11_tc.c PDP11/pdp11_tm.c PDP11/pdp11_ts.c PDP11/pdp11_io.c\
-  PDP11/pdp11_rq.c PDP11/pdp11_tq.c PDP11/pdp11_pclk.c PDP11/pdp11_ry.c\
-  PDP11/pdp11_pt.c PDP11/pdp11_hk.c PDP11/pdp11_xq.c PDP11/pdp11_xu.c\
-  PDP11/pdp11_vh.c PDP11/pdp11_rh.c PDP11/pdp11_tu.c PDP11/pdp11_cpumod.c\
-  PDP11/pdp11_cr.c PDP11/pdp11_rf.c PDP11/pdp11_dl.c PDP11/pdp11_ta.c\
-  PDP11/pdp11_rc.c PDP11/pdp11_kg.c PDP11/pdp11_ke.c PDP11/pdp11_dc.c\
-  PDP11/pdp11_dmc.c PDP11/pdp11_kmc.c PDP11/pdp11_dup.c PDP11/pdp11_rs.c\
-  PDP11/opcon.c PDP11/pdp11_vt.c PDP11/pdp11_td.c PDP11/pdp11_rom.c PDP11/pdp11_io_lib.c\
-  PDP11/pdp11_ch.c \
+  -DHAVE_TAP_NETWORK -DUSE_NETWORK\
+  -DHAVE_SHM_OPEN -DOPCON -DOPCON_THR -DREAL_PC05\
+  PDP11/opcon.c\
+  -I . -I /usr/include/pcap -I PDP11\
+  PDP11/pdp11_fp.c PDP11/pdp11_cpu.c PDP11/pdp11_dz.c PDP11/pdp11_cis.c\
+  PDP11/pdp11_lp.c PDP11/pdp11_rk.c PDP11/pdp11_rl.c PDP11/pdp11_rp.c\
+  PDP11/pdp11_rx.c PDP11/pdp11_stddev.c PDP11/pdp11_sys.c PDP11/pdp11_tc.c\
+  PDP11/pdp11_tm.c PDP11/pdp11_ts.c PDP11/pdp11_io.c PDP11/pdp11_rq.c\
+  PDP11/pdp11_tq.c PDP11/pdp11_pclk.c PDP11/pdp11_ry.c PDP11/pdp11_pt.c\
+  PDP11/pdp11_hk.c PDP11/pdp11_xq.c PDP11/pdp11_xu.c PDP11/pdp11_vh.c\
+  PDP11/pdp11_rh.c PDP11/pdp11_tu.c PDP11/pdp11_cpumod.c PDP11/pdp11_cr.c\
+  PDP11/pdp11_rf.c PDP11/pdp11_dl.c PDP11/pdp11_ta.c PDP11/pdp11_rc.c\
+  PDP11/pdp11_kg.c PDP11/pdp11_ke.c PDP11/pdp11_dc.c PDP11/pdp11_dmc.c\
+  PDP11/pdp11_kmc.c PDP11/pdp11_dup.c PDP11/pdp11_rs.c PDP11/pdp11_vt.c\
+  PDP11/pdp11_td.c PDP11/pdp11_rom.c PDP11/pdp11_ch.c PDP11/pdp11_io_lib.c\
   scp.c sim_console.c sim_fio.c sim_timer.c sim_sock.c sim_tmxr.c sim_ether.c\
   sim_tape.c sim_disk.c sim_serial.c sim_video.c sim_imd.c sim_card.c\
-  -DVM_PDP11 -I PDP11 -DHAVE_TAP_NETWORK -DUSE_NETWORK\
-  -o pdp11_new -lm -lrt -lpthread -ldl 
-
+  -o pdp11_new -lm -lrt -lpthread -ldl -L/usr/lib
 rm PDP11/opcon.c
+#
