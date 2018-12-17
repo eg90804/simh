@@ -251,9 +251,8 @@ if (ptr_csr & CSR_IE) SET_INT (PTR);
 if ((ptr_unit.flags & UNIT_ATT) == 0)
     return IORETURN (ptr_stopioe, SCPE_UNATT);
 #ifdef REAL_PC05
-if ((temp = pc05_cmd('R', ptr_unit.fileref, &temp, &ptr_csr)) == EOF)
+if ((temp = pc05_read (ptr_unit.fileref, &temp, &ptr_csr)) == EOF)
     return SCPE_OK;
-sim_activate_after(uptr, PC05_READER_INTERVAL);
 #else
 if ((temp = getc (ptr_unit.fileref)) == EOF) {
     if (feof (ptr_unit.fileref)) {
@@ -365,11 +364,10 @@ if (ptp_csr & CSR_IE)
 if ((ptp_unit.flags & UNIT_ATT) == 0)
     return IORETURN (ptp_stopioe, SCPE_UNATT);
 #ifdef REAL_PC05
-if (pc05_cmd ('P', ptp_unit.fileref, &ptp_unit.buf, &ptp_csr) == EOF) {
+if (pc05_write (ptp_unit.fileref, &ptp_unit.buf, &ptp_csr) == EOF) {
     clearerr (ptp_unit.fileref); /* needed here? */
     return SCPE_IOERR;
   }
-sim_activate_after(uptr, PC05_PUNCH_INTERVAL);
 #else
 if (putc (ptp_unit.buf, ptp_unit.fileref) == EOF) {
     sim_perror ("PTP I/O error");
@@ -524,9 +522,6 @@ switch (act) {
     case 'D' :				/* State machine state */
     case 'S' :				/* Reader/punch status */
     case 'I' :				/* Initialize PC05 (H/W reset) */
-    case 'R' :				/* Read 1 frame */
-		break;
-    case 'P' :	cmd[2] = *data & 0xFF;	/* Punch 1 frame */
 		break;
     case 'T' :	cmd[2] = *data & 0xFF;	/* Set watchdog control timer */
 		break;
@@ -539,7 +534,7 @@ if (write(fd, cmd, 4) != 4) {
     }
 
 	/* Conditional response returned */
-if (act == 'I' || act == 'R' || act == 'S') {
+if (act == 'I' || act == 'S') {
   if (read(fd, res, 2) != 2) {
     *csr = *csr | CSR_ERR;
     return EOF;
@@ -553,14 +548,56 @@ switch (act) {
     case 'D' :
     case 'I' :
     case 'T' :  break;
-    case 'P' :	*csr = *csr & ~CSR_ERR;		/* clear err */
-		break;
-    case 'R' :  *csr = (*csr | CSR_DONE) & ~CSR_ERR; /* set done, clear err */
-	        break;
     case 'S' :  /* add proper logic to set csr bits.  */
                 *csr = 0;
+		break;
     }
 
 return 0;
 }
+
+int32 pc05_read (FILE *p, int32 *data, int32 *csr)
+{
+int32 i = 0, fd = p->_fileno;
+unsigned char cmd[4] = { 0xFF, 'R', 0, 0xFF }, res[4];
+
+	/* Send command packet */
+if (write(fd, cmd, 4) != 4) {
+    *csr = *csr | CSR_ERR;
+    return EOF;
+    }
+
+	/* Conditional response returned */
+if (read(fd, res, 2) != 2) {
+  *csr = *csr | CSR_ERR;
+  return EOF;
+  }
+*data = res[0];
+*csr = (*csr | CSR_DONE) & ~CSR_ERR; /* set done, clear err */
+return 0;
+}
+
+int32 pc05_write (FILE *p, int32 *data, int32 *csr)
+{
+int32 i = 0, fd = p->_fileno;
+unsigned char cmd[4] = { 0xFF, 'P', 0, 0xFF }, res[4];
+
+cmd[2] = *data & 0xFF;	/* Punch 1 frame */
+
+	/* Send command packet */
+if (write(fd, cmd, 4) != 4) {
+    *csr = *csr | CSR_ERR;
+    return EOF;
+    }
+
+	/* Conditional response returned */
+if (read(fd, res, 2) != 2) {
+  *csr = *csr | CSR_ERR;
+  return EOF;
+  }
+
+*csr = *csr & ~CSR_ERR;		/* clear err */
+return 0;
+}
+
 #endif
