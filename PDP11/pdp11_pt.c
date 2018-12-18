@@ -488,9 +488,9 @@ if (tcgetattr(fd, &pc05_tty)) {
     }
 
 fcntl(fd, F_SETFL);
-cfmakeraw(&pc05_tty);		/* serial line to raw mode */
-pc05_tty.c_cc[VMIN] = 2;	/* Response packet is 4 bytes */
-pc05_tty.c_cc[VTIME] = 2;	/* wait up to 0.2 sec */
+cfmakeraw(&pc05_tty);			/* serial line to raw mode */
+pc05_tty.c_cc[VMIN] = 4;		/* Response packet bytes */
+pc05_tty.c_cc[VTIME] = 2;		/* wait up to 0.2 sec */
 if (tcsetattr(fd, TCSANOW, &pc05_tty)) {
     printf("PTP/PTR : failed to set attributes for raw mode\n");
     return SCPE_IOERR;
@@ -499,20 +499,20 @@ if (tcsetattr(fd, TCSANOW, &pc05_tty)) {
 if (pc05_cmd ('I', fp, &dummy, &dummy) == EOF || dummy != 0)
   return SCPE_IOERR;
 
-pc05_link_set = 1;	/* Flag link set & ready */
+pc05_link_set = 1;			/* Flag link set & ready */
 return SCPE_OK;
 }
 
 void pc05_det_line ()
 {
 if (pc05_link_set == 1)
-    pc05_link_set = 0;		/* Flag link cleared */
+    pc05_link_set = 0;			/* Flag link cleared */
 }
 
 int32 pc05_cmd (char act, FILE *p, int32 *data, int32 *csr)
 {
 int32 i = 0, fd = p->_fileno;
-unsigned char cmd[4] = { 0xFF, 0, 0, 0xFF }, res[4];
+unsigned char cmd[4] = { 0xFF, 0, 0, 0xFF }, res[2];
 
 cmd[1] = act & 0xFF;
 switch (act) {
@@ -527,14 +527,12 @@ switch (act) {
 		break;
     }
 
-	/* Send command packet */
-if (write(fd, cmd, 4) != 4) {
+if (write(fd, cmd, 4) != 4) {		/* Send command packet */
     *csr = *csr | CSR_ERR;
     return EOF;
     }
 
-	/* Conditional response returned */
-if (act == 'I' || act == 'S') {
+if (act == 'I' || act == 'S') {		/* Conditional response returned */
   if (read(fd, res, 2) != 2) {
     *csr = *csr | CSR_ERR;
     return EOF;
@@ -548,8 +546,7 @@ switch (act) {
     case 'D' :
     case 'I' :
     case 'T' :  break;
-    case 'S' :  /* add proper logic to set csr bits.  */
-                *csr = 0;
+    case 'S' :  *csr = 0;		/* add proper logic to set csr bits. */
 		break;
     }
 
@@ -559,45 +556,39 @@ return 0;
 int32 pc05_read (FILE *p, int32 *data, int32 *csr)
 {
 int32 i = 0, fd = p->_fileno;
-unsigned char cmd[4] = { 0xFF, 'R', 0, 0xFF }, res[4];
-
-	/* Send command packet */
-if (write(fd, cmd, 4) != 4) {
-    *csr = *csr | CSR_ERR;
-    return EOF;
-    }
-
-	/* Conditional response returned */
-if (read(fd, res, 2) != 2) {
+unsigned char cmd[4] = { 0xFF, 'R', 0, 0xFF }, res[2];
+	
+if (write(fd, cmd, 4) != 4 || 		/* Send command packet */
+    read(fd, res, 2) != 2) {		/* Get the response data */
   *csr = *csr | CSR_ERR;
   return EOF;
   }
+
 *data = res[0];
-*csr = (*csr | CSR_DONE) & ~CSR_ERR; /* set done, clear err */
+
+//  if ((res[0] & 0x02) != 0)
+//    *csr = *csr | CSR_ROUT;
+//  else
+*csr = (*csr | CSR_DONE) & ~CSR_ERR;	/* set done, clear err */
 return 0;
 }
 
 int32 pc05_write (FILE *p, int32 *data, int32 *csr)
 {
 int32 i = 0, fd = p->_fileno;
-unsigned char cmd[4] = { 0xFF, 'P', 0, 0xFF }, res[4];
+unsigned char cmd[4] = { 0xFF, 'P', 0, 0xFF }, res[2];
 
-cmd[2] = *data & 0xFF;	/* Punch 1 frame */
-
-	/* Send command packet */
-if (write(fd, cmd, 4) != 4) {
-    *csr = *csr | CSR_ERR;
-    return EOF;
-    }
-
-	/* Conditional response returned */
-if (read(fd, res, 2) != 2) {
+cmd[2] = *data & 0xFF;			/* Punch 1 frame */
+if (write(fd, cmd, 4) != 4 ||		/* Send command packet */
+    read(fd, res, 2) != 2) {		/* Get the response data */
   *csr = *csr | CSR_ERR;
   return EOF;
   }
 
-*csr = *csr & ~CSR_ERR;		/* clear err */
+//  if (res[0] & 0x01) != 0)
+//    *csr = *csr | CSR_POUT;
+//  else
+*csr = *csr & ~CSR_ERR;			/* clear err */
 return 0;
 }
-
 #endif
