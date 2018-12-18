@@ -566,10 +566,10 @@ if (write(fd, cmd, 4) != 4 || 		/* Send command packet */
 
 *data = res[0];
 
-//  if ((res[0] & 0x02) != 0)
-//    *csr = *csr | CSR_ROUT;
-//  else
-*csr = (*csr | CSR_DONE) & ~CSR_ERR;	/* set done, clear err */
+if ((res[0] & 0x02) != 0)
+    *csr = *csr & ~CSR_GO;		/* Out of paper */
+else
+    *csr = (*csr | CSR_DONE) & ~CSR_ERR;	/* set done, clear err */
 return 0;
 }
 
@@ -585,10 +585,10 @@ if (write(fd, cmd, 4) != 4 ||		/* Send command packet */
   return EOF;
   }
 
-//  if (res[0] & 0x01) != 0)
-//    *csr = *csr | CSR_POUT;
-//  else
-*csr = *csr & ~CSR_ERR;			/* clear err */
+if (res[0] & 0x01) != 0)
+    *csr = *csr & ~CSR_GO;		/* Out of paper */
+else
+    *csr = *csr & ~CSR_ERR;		/* clear err */
 return 0;
 }
 #endif
