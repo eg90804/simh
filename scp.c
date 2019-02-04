@@ -743,7 +743,6 @@ const struct scp_error {
          {"STALL",   "Console Telnet output stall"},
          {"AFAIL",   "Assertion failed"},
          {"INVREM",  "Invalid remote console command"},
-         {"NOTATT",  "Not attached"},
          {"EXPECT",  "Expect matched"},
          {"AMBREG",  "Ambiguous register name"},
          {"REMOTE",  "remote console command"},
@@ -1760,8 +1759,6 @@ static const char simh_help[] =
       " Assertion failed\n"
       "5 INVREM\n"
       " Invalid remote console command\n"
-      "5 NOTATT\n"
-      " Not attached \n"
       "5 AMBREG\n"
       " Ambiguous register\n"
 #define HLP_SHIFT       "*Commands Executing_Command_Files SHIFT"
@@ -1804,7 +1801,7 @@ static const char simh_help[] =
       "++NOPARAM, ALATT, TIMER, SIGERR, TTYERR, SUB, NOFNC, UDIS,\n"
       "++NORO, INVSW, MISVAL, 2FARG, 2MARG, NXDEV, NXUN, NXREG,\n"
       "++NXPAR, NEST, IERR, MTRLNT, LOST, TTMO, STALL, AFAIL,\n"
-      "++NOTATT, AMBREG\n\n"
+      "++AMBREG\n\n"
       " These values can be indicated by name or by their internal\n"
       " numeric value (not recommended).\n"
       /***************** 80 character line width template *************************/
@@ -7048,7 +7045,7 @@ if (!(uptr->flags & UNIT_ATT)) {                        /* not attached? */
     if (sim_switches & SIM_SW_REST)                     /* restoring? */
         return SCPE_OK;                                 /* allow detach */
     else
-        return SCPE_NOTATT;                             /* complain */
+        return SCPE_UNATT;                              /* complain */
     }
 if ((dptr = find_dev_from_unit (uptr)) == NULL)
     return SCPE_OK;
@@ -14517,24 +14514,28 @@ DEVICE *dptr;
 t_stat stat = SCPE_OK;
 
 for (i = 0; (dptr = sim_devices[i]) != NULL; i++) {
+    t_stat tstat = SCPE_OK;
+
     switch (DEV_TYPE(dptr)) {
 #if defined(USE_SIM_CARD)
         case DEV_CARD:
-            stat = sim_card_test (dptr);
+            tstat = sim_card_test (dptr);
             break;
 #endif
         case DEV_DISK:
-            stat = sim_disk_test (dptr);
+            tstat = sim_disk_test (dptr);
             break;
         case DEV_ETHER:
-            stat = sim_ether_test (dptr);
+            tstat = sim_ether_test (dptr);
             break;
         case DEV_TAPE:
-            stat = sim_tape_test (dptr);
+            tstat = sim_tape_test (dptr);
             break;
         default:
             break;
         }
+    if (tstat != SCPE_OK)
+        stat = tstat;
     }
 return stat;
 }

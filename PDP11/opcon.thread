@@ -328,7 +328,9 @@ return r;
 
 /*
  * Function : oc_reset()
- * Note	    : Reset the device and queue the service routine
+ * Note	    : Reset the device and queue the service routine.
+ *            Called on start of simulator, at 'reset <dev>', 'reset all'
+ *            and 'boot <dev>'.
  * Returns  : SCPE_OK
  */
 t_stat oc_reset (DEVICE *dptr)
