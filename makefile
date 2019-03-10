@@ -108,7 +108,7 @@ ifneq (,$(findstring besm6,$(MAKECMDGOALS)))
   BESM6_BUILD = true
 endif
 # building the pdp11, pdp10, or any vax simulator could use networking support
-ifneq (,$(or $(findstring pdp11,$(MAKECMDGOALS)),$(findstring pdp10,$(MAKECMDGOALS)),$(findstring vax,$(MAKECMDGOALS)),$(findstring all,$(MAKECMDGOALS))))
+ifneq (,$(or $(findstring pdp11,$(MAKECMDGOALS)),$(findstring pdp10,$(MAKECMDGOALS)),$(findstring vax,$(MAKECMDGOALS)),$(findstring 3b2,$(MAKECMDGOALS))$(findstring all,$(MAKECMDGOALS))))
   NETWORK_USEFUL = true
   ifneq (,$(findstring all,$(MAKECMDGOALS)))
     BUILD_MULTIPLE = s
@@ -338,8 +338,8 @@ ifeq ($(WIN32),)  #*nix Environments (&& cygwin)
         else
           ifeq (cygwin,$(OSTYPE))
             # use 0readme_ethernet.txt documented Windows pcap build components
-            INCPATH += ../windows-build/winpcap/WpdPack/include
-            LIBPATH += ../windows-build/winpcap/WpdPack/lib
+            INCPATH += ../windows-build/winpcap/WpdPack/Include
+            LIBPATH += ../windows-build/winpcap/WpdPack/Lib
             PCAPLIB = wpcap
             LIBEXT = a
           else
@@ -581,6 +581,7 @@ ifeq ($(WIN32),)  #*nix Environments (&& cygwin)
           VIDEO_FEATURES = - video capabilities provided by libSDL2 (Simple Directmedia Layer)
           DISPLAYL = ${DISPLAYD}/display.c $(DISPLAYD)/sim_ws.c
           DISPLAYVT = ${DISPLAYD}/vt11.c
+          DISPLAYNG = ${DISPLAYD}/ng.c
           DISPLAY_OPT += -DUSE_DISPLAY $(VIDEO_CCDEFS) $(VIDEO_LDFLAGS)
           $(info using libSDL2: $(call find_include,SDL2/SDL))
           ifeq (Darwin,$(OSTYPE))
@@ -604,6 +605,7 @@ ifeq ($(WIN32),)  #*nix Environments (&& cygwin)
             VIDEO_FEATURES = - video capabilities provided by libSDL (Simple Directmedia Layer)
             DISPLAYL = ${DISPLAYD}/display.c $(DISPLAYD)/sim_ws.c
             DISPLAYVT = ${DISPLAYD}/vt11.c
+            DISPLAYNG = ${DISPLAYD}/ng.c
             DISPLAY_OPT += -DUSE_DISPLAY $(VIDEO_CCDEFS) $(VIDEO_LDFLAGS)
             $(info using libSDL: $(call find_include,SDL/SDL))
             ifeq (Darwin,$(OSTYPE))
@@ -1282,7 +1284,8 @@ PDP11 = ${PDP11D}/pdp11_fp.c ${PDP11D}/pdp11_cpu.c ${PDP11D}/pdp11_dz.c \
 PDP11_OPT = -DVM_PDP11 -I ${PDP11D} ${NETWORK_OPT} $(DISPLAY_OPT) -DOPCON
 =======
 	${PDP11D}/pdp11_vt.c ${PDP11D}/pdp11_td.c ${PDP11D}/pdp11_io_lib.c \
-	${PDP11D}/pdp11_rom.c ${PDP11D}/pdp11_ch.c $(DISPLAYL) $(DISPLAYVT)
+	${PDP11D}/pdp11_rom.c ${PDP11D}/pdp11_ch.c $(DISPLAYL) $(DISPLAYVT) \
+	${PDP11D}/pdp11_ng.c ${PDP11D}/pdp11_daz.c $(DISPLAYNG)
 PDP11_OPT = -DVM_PDP11 -I ${PDP11D} ${NETWORK_OPT} $(DISPLAY_OPT)
 >>>>>>> 371e5fe5ccffda4bd21bc4c5f47cad78870d5992
 
@@ -1845,8 +1848,8 @@ ATT3B2 = ${ATT3B2D}/3b2_cpu.c ${ATT3B2D}/3b2_mmu.c \
 	${ATT3B2D}/3b2_id.c ${ATT3B2D}/3b2_dmac.c \
 	${ATT3B2D}/3b2_sys.c ${ATT3B2D}/3b2_io.c \
 	${ATT3B2D}/3b2_ports.c ${ATT3B2D}/3b2_ctc.c \
-	${ATT3B2D}/3b2_sysdev.c
-ATT3B2_OPT = -I ${ATT3B2D} -DUSE_INT64 -DUSE_ADDR64
+	${ATT3B2D}/3b2_ni.c ${ATT3B2D}/3b2_sysdev.c
+ATT3B2_OPT = -DUSE_INT64 -DUSE_ADDR64 -I ${ATT3B2D} ${NETWORK_OPT}
 #
 # Build everything (not the unsupported/incomplete or experimental simulators)
 #
