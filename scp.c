@@ -2246,7 +2246,7 @@ static const char simh_help[] =
       " Specifies a true (false {NOT}) condition if the file exists.\n"
       "5File Comparison Expressions\n"
       " Files can have their contents compared with:\n\n"
-      "++-D {NOT} \"<filespec1>\" == \"<filespec2>\" \n\n"
+      "++-F {NOT} \"<filespec1>\" == \"<filespec2>\" \n\n"
       " Specifies a true (false {NOT}) condition if the indicated files\n"
       " have the same contents.\n\n"
        /***************** 80 character line width template *************************/
@@ -2646,7 +2646,7 @@ else if (*argv[0]) {                                    /* sim name arg? */
 if (SCPE_BARE_STATUS(stat) == SCPE_OPENERR)             /* didn't exist/can't open? */
     stat = SCPE_OK;
 
-if (sim_switches & SWMASK ('T'))                        /* Command Line -T switch */
+if (sim_switches & SWMASK ('T'))                       /* Command Line -T switch */
     stat = sim_library_unit_tests ();                   /* run library unit tests */
 
 if (SCPE_BARE_STATUS(stat) != SCPE_EXIT)
@@ -4279,7 +4279,6 @@ for (i=1; i<arg_count-1; ++i)
 return SCPE_OK;
 }
 
-static
 int sim_cmp_string (const char *s1, const char *s2)
 {
 long int v1, v2;
@@ -5996,10 +5995,11 @@ if (sim_clock_queue == QUEUE_LIST_END)
     fprintf (st, "%s event queue empty, time = %.0f, executing %s instructios/sec\n",
              sim_name, sim_time, sim_fmt_numeric (sim_timer_inst_per_sec ()));
 else {
-    const char *tim;
+    const char *tim = "";
+    double inst_per_sec = sim_timer_inst_per_sec ();
 
     fprintf (st, "%s event queue status, time = %.0f, executing %s instructions/sec\n",
-             sim_name, sim_time, sim_fmt_numeric (sim_timer_inst_per_sec ()));
+             sim_name, sim_time, sim_fmt_numeric (inst_per_sec));
     accum = 0;
     for (uptr = sim_clock_queue; uptr != QUEUE_LIST_END; uptr = uptr->next) {
         if (uptr == &sim_step_unit)
@@ -6015,7 +6015,8 @@ else {
                     }
                 else
                     fprintf (st, "  Unknown");
-        tim = sim_fmt_secs(((accum + uptr->time) / sim_timer_inst_per_sec ()) + (uptr->usecs_remaining / 1000000.0));
+        if (inst_per_sec != 0.0)
+            tim = sim_fmt_secs(((accum + uptr->time) / sim_timer_inst_per_sec ()) + (uptr->usecs_remaining / 1000000.0));
         if (uptr->usecs_remaining)
             fprintf (st, " at %d plus %.0f usecs%s%s%s%s\n", accum + uptr->time, uptr->usecs_remaining,
                                             (*tim) ? " (" : "", tim, (*tim) ? " total)" : "",
@@ -6704,8 +6705,10 @@ for (i = 0; i < start; i++) {
         return SCPE_IERR;
     }
 for (i = start; (dptr = sim_devices[i]) != NULL; i++) {
-    if (sim_switches & SWMASK('P'))
+    if (sim_switches & SWMASK('P')) {
         tmxr_add_debug (dptr);          /* Add TMXR debug to MUX devices */
+        sim_tape_add_debug (dptr);      /* Add TAPE debug to TAPE devices */
+        }
     if (dptr->reset != NULL) {
         reason = dptr->reset (dptr);
         if (reason != SCPE_OK)
@@ -6903,6 +6906,7 @@ return attach_unit (uptr, (CONST char *)cptr);          /* no, std routine */
 t_stat attach_unit (UNIT *uptr, CONST char *cptr)
 {
 DEVICE *dptr;
+t_bool open_rw = FALSE;
 
 if (!(uptr->flags & UNIT_ATTABLE))                      /* not attachable? */
     return SCPE_NOATT;
@@ -6956,6 +6960,8 @@ else {
                 sim_messagef (SCPE_OK, "%s: creating new file\n", sim_dname (dptr));
                 }
             }                                           /* end if null */
+        else
+            open_rw = TRUE;
         }                                               /* end else */
     }
 if (uptr->flags & UNIT_BUFABLE) {                       /* buffer? */
@@ -6971,6 +6977,12 @@ if (uptr->flags & UNIT_BUFABLE) {                       /* buffer? */
     }
 uptr->flags = uptr->flags | UNIT_ATT;
 uptr->pos = 0;
+if (open_rw &&                                      /* open for write in append mode? */
+    (sim_switches & SWMASK ('A')) &&
+    (uptr->flags & UNIT_SEQ) &&
+    (!(uptr->flags & UNIT_MUSTBUF)) &&
+    (0 == sim_fseek (uptr->fileref, 0, SEEK_END)))
+    uptr->pos = (t_addr)sim_ftell (uptr->fileref);  /* Position at end of file */
 return SCPE_OK;
 }
 
@@ -8735,7 +8747,7 @@ for (i = 0, j = addr; i < sim_emax; i++, j = j + dptr->aincr) {
                 reason = SCPE_IOERR;
                 break;
                 }
-            sim_fread (&sim_eval[i], sz, 1, uptr->fileref);
+            (void)sim_fread (&sim_eval[i], sz, 1, uptr->fileref);
             if ((feof (uptr->fileref)) &&
                !(uptr->flags & UNIT_FIX)) {
                 reason = SCPE_EOF;
@@ -12938,6 +12950,11 @@ if (sim_deb && ((dptr->dctrl | (uptr ? uptr->dctrl : 0)) & reason)) {
                         ebcdicbuf[eidx++] = '.';
                     }
                 }
+            for (; sidx<16; ++sidx) {
+                strbuf[soff+sidx] = ' ';
+                if (eidx)
+                    ebcdicbuf[eidx++] = ' ';
+                }
             outbuf[oidx] = '\0';
             strbuf[soff+sidx] = '\0';
             ebcdicbuf[eidx] = '\0';
@@ -14560,6 +14577,36 @@ return cptr;
 }
 
 /*
+ * To avoid Coverity complaints about the use of rand() we define the function locally
+ * This implementation of Lehmer's minimal standard algorithm is derived 
+ * from the integer solution provided in:
+ " "Communications of the ACM, October 1988, Volume 31, Number 10, page 1195"
+ */
+
+static int32 sim_rand_seed = 2;
+
+void sim_srand (unsigned int seed)
+{
+/* Keep the seed within 1..RAND_MAX */
+sim_rand_seed = (int32)(seed % RAND_MAX) + 1;
+}
+
+int sim_rand ()
+{
+const int32 a = 16807;
+const int32 q = 127773;         /* (RAND_MAX + 1) / a */
+const int32 r = 2836;           /* (RAND_MAX + 1) % a */
+int32 lo, hi;
+
+hi = sim_rand_seed / q;
+lo = sim_rand_seed % q;
+sim_rand_seed = a * lo - r * hi;
+if (sim_rand_seed < 0)
+    sim_rand_seed += RAND_MAX + 1;
+return (sim_rand_seed - 1);
+}
+
+/*
  * Compiled in unit tests for the various device oriented library 
  * modules: sim_card, sim_disk, sim_tape, sim_ether, sim_tmxr, etc.
  */
@@ -14568,11 +14615,18 @@ static t_stat sim_library_unit_tests (void)
 {
 int i;
 DEVICE *dptr;
+int32 saved_switches = sim_switches & ~SWMASK ('T');
 t_stat stat = SCPE_OK;
 
+if (sim_switches & SWMASK ('D')) {
+    sim_switches &= ~(SWMASK ('D') | SWMASK ('R') | SWMASK ('F') | SWMASK ('T'));
+    sim_set_debon (0, "STDOUT");
+    sim_switches = saved_switches;
+    }
 for (i = 0; (dptr = sim_devices[i]) != NULL; i++) {
     t_stat tstat = SCPE_OK;
 
+    sim_switches = saved_switches;
     switch (DEV_TYPE(dptr)) {
 #if defined(USE_SIM_CARD)
         case DEV_CARD:
