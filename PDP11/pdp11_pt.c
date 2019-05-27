@@ -65,6 +65,8 @@ struct termios pc05_tty;
 int32 pc05_att_line (UNIT *uptr);			/* (re)conf serial line */
 void pc05_det_line ();					/* detach line */
 int32 pc05_cmd (char act, FILE *p, int32 *data, int32 *csr); /* comm funcion */
+int32 pc05_write (FILE *p, int32 *data, int32 *csr);
+int32 pc05_read (FILE *p, int32 *data, int32 *csr);
 #define PC05_PUNCH_INTERVAL 21820			/* ~22 millisec, 18200 for 60 Hz */
 #define PC05_READER_INTERVAL 3335			/* ~3.3 millisec */
 #endif
@@ -489,7 +491,7 @@ if (tcgetattr(fd, &pc05_tty)) {
 
 fcntl(fd, F_SETFL);
 cfmakeraw(&pc05_tty);			/* serial line to raw mode */
-pc05_tty.c_cc[VMIN] = 4;		/* Response packet bytes */
+pc05_tty.c_cc[VMIN] = 2;		/* Response packet bytes */
 pc05_tty.c_cc[VTIME] = 2;		/* wait up to 0.2 sec */
 if (tcsetattr(fd, TCSANOW, &pc05_tty)) {
     printf("PTP/PTR : failed to set attributes for raw mode\n");
@@ -512,9 +514,9 @@ if (pc05_link_set == 1)
 int32 pc05_cmd (char act, FILE *p, int32 *data, int32 *csr)
 {
 int32 i = 0, fd = p->_fileno;
-unsigned char cmd[4] = { 0xFF, 0, 0, 0xFF }, res[2];
+unsigned char cmd[2] = { 0, 0 }, res[2];
 
-cmd[1] = act & 0xFF;
+cmd[0] = act & 0xFF;
 switch (act) {
     default  :	return EOF;
 		break;
@@ -523,11 +525,11 @@ switch (act) {
     case 'S' :				/* Reader/punch status */
     case 'I' :				/* Initialize PC05 (H/W reset) */
 		break;
-    case 'T' :	cmd[2] = *data & 0xFF;	/* Set watchdog control timer */
+    case 'T' :	cmd[1] = *data & 0xFF;	/* Set watchdog control timer */
 		break;
     }
 
-if (write(fd, cmd, 4) != 4) {		/* Send command packet */
+if (write(fd, cmd, 2) != 2) {		/* Send command packet */
     *csr = *csr | CSR_ERR;
     return EOF;
     }
@@ -553,39 +555,55 @@ switch (act) {
 return 0;
 }
 
+/*
+   need to figure out some trick for starting the reader once
+   so the data flow will start, and mark the end after the last char is read.
+   maybe a static var?
+*/
 int32 pc05_read (FILE *p, int32 *data, int32 *csr)
 {
 int32 i = 0, fd = p->_fileno;
-unsigned char cmd[4] = { 0xFF, 'R', 0, 0xFF }, res[2];
-	
-if (write(fd, cmd, 4) != 4 || 		/* Send command packet */
-    read(fd, res, 2) != 2) {		/* Get the response data */
+unsigned char cmd[2] = { 'r', 0 }, res[2];
+static int start_read = 0;
+
+if (start_read == 0) {
+  if (write(fd, cmd, 2) != 2) {		/* Send command packet */
+    *csr = *csr | CSR_ERR;
+    return EOF;
+    }
+  start_read = 1;			/* Se streming read marker */
+  }
+ 
+if (read(fd, res, 2) != 2) {		/* Get the data */
   *csr = *csr | CSR_ERR;
   return EOF;
-  }
+}
 
 *data = res[0];
 
-if ((res[0] & 0x02) != 0)
+if ((res[0] & 0x02) != 0) {
     *csr = *csr & ~CSR_GO;		/* Out of paper */
+    start_read = 0;			/* clear strem read marker */
+    }
 else
     *csr = (*csr | CSR_DONE) & ~CSR_ERR;	/* set done, clear err */
+
 return 0;
 }
 
 int32 pc05_write (FILE *p, int32 *data, int32 *csr)
 {
 int32 i = 0, fd = p->_fileno;
-unsigned char cmd[4] = { 0xFF, 'P', 0, 0xFF }, res[2];
+unsigned char cmd[2] = { 'P', }, res[2];
 
 cmd[2] = *data & 0xFF;			/* Punch 1 frame */
-if (write(fd, cmd, 4) != 4 ||		/* Send command packet */
+if (write(fd, cmd, 2) != 2 ||		/* Send command packet */
     read(fd, res, 2) != 2) {		/* Get the response data */
   *csr = *csr | CSR_ERR;
   return EOF;
   }
 
-if (res[0] & 0x01) != 0)
+if ((res[0] & 0x01) != 0)
     *csr = *csr & ~CSR_GO;		/* Out of paper */
 else
     *csr = *csr & ~CSR_ERR;		/* clear err */
