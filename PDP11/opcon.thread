@@ -199,14 +199,12 @@ if ((tptr = strchr (cptr, '=')) == NULL)
 
 if ((oc_serhandle = sim_open_serial (tptr, NULL, &r)) != ((SERHANDLE)(void *)-1)) { /* port usable? */
     if (r != SCPE_OK) {
-        sim_close_serial (oc_serhandle);
         printf ("OC    : console link open error (%d).\n", errno);
         return -1;
         }
     }
 
 if ((ocp = (OC_ST *)malloc(sizeof(OC_ST))) == NULL) {
-    sim_close_serial (oc_serhandle);
     printf ("OC    : data structure malloc error (%d).\n", errno);
     sim_close_serial (oc_serhandle);
     return -1;
