@@ -1232,7 +1232,7 @@ for (i = 0; i < mp->lines; i++) {                       /* check each line in se
                         ++mp->sessions;                             /* count the new session */
 
                         if (lp->destination) {                      /* Virtual Null Modem Cable? */
-                            char host[CBUFSIZE];
+                            char host[sizeof(msg) - 64];
 
                             if (sim_parse_addr (lp->destination, host, sizeof(host), NULL, NULL, 0, NULL, address)) {
                                 tmxr_msg (newsock, "Rejecting connection from unexpected source\r\n");
@@ -2745,8 +2745,10 @@ while (*tptr) {
                 else
                     if (0 == MATCH_CMD (cptr, "TELNET"))
                         listennotelnet = FALSE;
-                    else
-                        return sim_messagef (SCPE_ARG, "Invalid Specifier: %s\n", tptr);
+                    else {
+                        if (*tptr)
+                            return sim_messagef (SCPE_ARG, "Invalid Specifier: %s\n", tptr);
+                        }
                 }
             cptr = init_cptr;
             }

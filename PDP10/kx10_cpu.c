@@ -221,7 +221,8 @@ int32   tmxr_poll = 10000;
 /* Physical address range for Rubin 10-11 interface. */
 #define T11RANGE(addr)  ((addr) >= 03040000)
 /* Physical address range for auxiliary PDP-6. */
-#define AUXCPURANGE(addr)  ((addr) >= 03000000 && (addr) < 03040000)
+extern int auxcpu_base;
+#define AUXCPURANGE(addr)  ((addr) >= auxcpu_base && (addr) < (auxcpu_base + 040000))
 
 DEVICE *rh_devs[] = {
 #if (NUM_DEVS_RS > 0)
@@ -813,12 +814,12 @@ int opflags[] = {
 void
 set_quantum()
 {
+    double us;
     sim_cancel(&cpu_unit[1]);
-    if ((qua_time & RSIGN) == 0) {
-        double us;
-        us = (double)(RSIGN - qua_time);
-        (void)sim_activate_after_d(&cpu_unit[1], us);
-    }
+    if (qua_time & BIT17)
+       return;
+    us = (double)(BIT17 - qua_time);
+    (void)sim_activate_after_d(&cpu_unit[1], us);
 }
 
 /*
@@ -830,7 +831,10 @@ load_quantum()
     if (sim_is_active(&cpu_unit[1])) {
        double us;
        us = sim_activate_time_usecs (&cpu_unit[1]);
-       qua_time = RSIGN - (uint32)us;
+       if ((uint32)us > BIT17)
+          qua_time = BIT17;
+       else
+          qua_time = (BIT17 - (uint32)us) & RMASK;
        sim_cancel(&cpu_unit[1]);
     }
 }
@@ -841,11 +845,11 @@ load_quantum()
 uint32
 get_quantum()
 {
-    uint32  t = 0;
+    uint32  t = qua_time;
     if (sim_is_active(&cpu_unit[1])) {
        double us;
        us = sim_activate_time_usecs (&cpu_unit[1]);
-       t = RSIGN - (uint32)us;
+       t = (BIT17 - (uint32)us) & RMASK;
     }
     return t;
 }
@@ -2645,7 +2649,8 @@ if ((reason = build_dev_tab ()) != SCPE_OK)            /* build, chk dib_tab */
   watch_stop = 0;
 
   while ( reason == 0) {                                /* loop until ABORT */
-    if (sim_interval <= 0) {                           /* check clock queue */
+    AIO_CHECK_EVENT;                                    /* queue async events */
+    if (sim_interval <= 0) {                            /* check clock queue */
          if ((reason = sim_process_event()) != SCPE_OK) {/* error?  stop sim */
 #if ITS
              if (QITS)
@@ -2744,6 +2749,7 @@ no_fetch:
               if (Mem_read(pi_cycle | uuo_cycle, 1, 0))
                  goto last;
          /* Handle events during a indirect loop */
+         AIO_CHECK_EVENT;           /* queue async events */
          if (sim_interval-- <= 0) {
               if ((reason = sim_process_event()) != SCPE_OK) {
                   return reason;
@@ -2792,8 +2798,9 @@ st_pi:
 #endif
 
     /* Check if possible idle loop */
-    if (sim_idle_enab && (FLAGS & USER) != 0 && PC < 020 && AB < 020 &&
-           (IR & 0760) == 0340) {
+    if (sim_idle_enab && 
+          (((FLAGS & USER) != 0 && PC < 020 && AB < 020 && (IR & 0760) == 0340) ||
+           (uuo_cycle && (IR & 0740) == 0 && IA == 041))) {
        sim_idle (TMR_RTC, FALSE);
     }
 
@@ -3491,9 +3498,10 @@ dpnorm:
                       AB = (AB + 1) & RMASK;
                       MB = M[AB];                /* WD 3 */
                       /* Store Quantum */
-                      qua_time = MB & RMASK;
+                      qua_time = MB & (RMASK|BIT17);
                       set_quantum();
                       fault_data = (MB >> 18) & RMASK;
+                      fault_data &= ~1; /* Clear high quantum bit */
                       mem_prot = 0;
                       if ((fault_data & 0777772) != 0)
                           mem_prot = 1;
@@ -4760,6 +4768,7 @@ left:
     case 0251: /* BLT */
               BR = AB;
               do {
+                  AIO_CHECK_EVENT;          /* queue async events */
                   if (sim_interval <= 0) {
                        sim_process_event();
                   }
@@ -5997,13 +6006,25 @@ qua_srv(UNIT * uptr)
 {
     if ((fault_data & 1) == 0 && pi_enable && !pi_pending && (FLAGS & USER) != 0) {
        mem_prot = 1;
-       fault_data |= 1;
     }
-    qua_time = RSIGN;
+    qua_time = BIT17;
     return SCPE_OK;
 }
 #endif
 
+
+/*
+ * This sequence of instructions is a mix that hopefully
+ * represents a resonable instruction set that is a close 
+ * estimate to the normal calibrated result.
+ */
+
+static const char *pdp10_clock_precalibrate_commands[] = {
+    "-m 100 ADDM 0,110",
+    "-m 101 ADDI 0,1",
+    "-m 102 JRST 100",
+    "PC 100",
+    NULL};
 
 /* Reset routine */
 
@@ -6039,6 +6060,7 @@ exec_map = 0;
 for(i=0; i < 128; dev_irq[i++] = 0);
 sim_brk_types = SWMASK('E') | SWMASK('W') | SWMASK('R');
 sim_brk_dflt = SWMASK ('E');
+sim_clock_precalibrate_commands = pdp10_clock_precalibrate_commands;
 sim_rtcn_init_unit (&cpu_unit[0], cpu_unit[0].wait, TMR_RTC);
 sim_activate(&cpu_unit[0], 10000);
 #if MPX_DEV

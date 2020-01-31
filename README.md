@@ -2,6 +2,7 @@
 
 [![Coverity Scan Build Status](https://scan.coverity.com/projects/11982/badge.svg)](https://scan.coverity.com/projects/simh)
 [![Build Status](https://travis-ci.org/simh/simh.svg)](https://travis-ci.org/simh/simh)
+[![AppVeyor](https://ci.appveyor.com/api/projects/status/github/simh/simh)](https://ci.appveyor.com/project/simh/simh/history)
 
 ## Table of Contents:
 [WHAT'S NEW since simh v3.9](#whats-new-since-simh-v39)  
@@ -38,8 +39,8 @@
 . . . . . . . . . . [Linux - Dependencies](#linux---dependencies)  
 . . . . . . [Windows](#windows)  
 . . . . . . . . [Required related files](#required-related-files)  
-. . . . . . . . [Visual Studio (Standard or Express) 2008, 2010, 2012, 2013 or Visual Studio Community 2015](#visual-studio-standard-or-express-2008-2010-2012-2013-or-visual-studio-community-2015)  
-. . . . . . . . [MinGW](#mingw)  
+. . . . . . . . [Visual Studio (Standard or Express) 2008, 2010, 2012, 2013 or Visual Studio Community 2015, 2017, 2019](#visual-studio-standard-or-express-2008-2010-2012-2013-or-visual-studio-community-2015-2017-2019)  
+. . . . . . . . [MinGW32](#mingw32)  
 . . . . . . [VMS](#vms)  
 . . [Problem Reports](#problem-reports)  
 
@@ -181,9 +182,9 @@ A remote console session will close when an EOF character is entered (i.e. ^D or
     Input character rates reflect the natural character arrival time based on the line speed.
 
 #### Video Display Capabilities
-Added support for monochrome displays with optional keyboards and mice.  
-The VAXstation QVSS device (VCB01) simulation uses this capability.
-Host platforms which have libSDL available can leverage this functionality.
+Added support for monochrome and color displays with optional keyboards and mice.  
+The VAXstation QVSS device (VCB01) and QDSS device (VCB02) simulations use these capabilities.
+Host platforms which have libSDL2 available can leverage this functionality.
 
 #### Asynchronous I/O
     * Disk and Tape I/O can be asynchronous.  Asynchronous support exists 
@@ -404,6 +405,7 @@ Device simulator authors can easily schedule their device polling activities to 
     RUN UNTIL "output-string" ...    Establish the specified "output-string" as an EXPECT and run until it is encountered.
     GO UNTIL breakpoint              Establish the breakpoint specified and go until it is encountered
     GO UNTIL "output-string" ...     Establish the specified "output-string" as an EXPECT and go until it is encountered.
+    RUNLIMIT						 Bound simulator execution time
 
 #### Command Processing Enhancements
 
@@ -506,7 +508,15 @@ The makefile provided requires GNU make, which is the default make facility for 
 
 ##### Build Dependencies
 
-Some simulators depend on external packages to provide the full scope of functionality they may be simulating.  These additional external packages may or may not be included in as part of the standard Operating System distributions.  
+Some simulators depend on external packages to provide the full scope of 
+functionality they may be simulating.  These additional external packages 
+may or may not be included in as part of the standard Operating System 
+distributions.  If simulators are being built that could provide more 
+functionality than the currently installed packages will provide, the build
+will succeed with reduced functionality (i.e. limited network or no video
+support), but suggestions will be provided as to what could provide full 
+functionality.
+
 
 ###### OS X - Dependencies
 
@@ -542,13 +552,13 @@ Compiling on windows is supported with recent versions of Microsoft Visual Studi
 ##### Required related files
 The file https://github.com/simh/simh/blob/master/Visual%20Studio%20Projects/0ReadMe_Projects.txt
 
-##### Visual Studio (Standard or Express) 2008, 2010, 2012, 2013 or Visual Studio Community 2015
+##### Visual Studio (Standard or Express) 2008, 2010, 2012, 2013 or Visual Studio Community 2015, 2017, 2019
 
 The file https://github.com/simh/simh/blob/master/Visual%20Studio%20Projects/0ReadMe_Projects.txt describes the required steps to use the setup your environment to build using Visual Studio.
 
-##### MinGW
+##### MinGW32
 
-The file https://github.com/simh/simh/blob/master/Visual%20Studio%20Projects/0ReadMe_Projects.txt describes the required steps to use the setup your environment to build using MinGW.
+The file https://github.com/simh/simh/blob/master/Visual%20Studio%20Projects/0ReadMe_Projects.txt describes the required steps to use the setup your environment to build using MinGW32.
 
 #### VMS
 
