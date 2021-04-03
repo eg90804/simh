@@ -117,7 +117,11 @@ REG ptr_reg[] = {
     { FLDATAD (DONE,         ptr_csr, CSR_V_DONE,     "device done flag (CSR<7>)") },
     { FLDATAD (IE,           ptr_csr, CSR_V_IE,       "interrupt enable flag (CSR<6>)") },
     { DRDATAD (POS,     ptr_unit.pos, T_ADDR_W,       "position in the input file"), PV_LEFT },
+#ifdef REAL_PC05
     { DRDATAD (TIME,   ptr_unit.wait, 24,             "time from I/O initiation to interrupt"), PV_LEFT },
+#else
+    { DRDATAD (TIME,   ptr_unit.wait, 24,             "time from I/O initiation to interrupt"), PV_LEFT },
+#endif
     { FLDATAD (STOP_IOE, ptr_stopioe, 0,              "stop on I/O error") },
     { FLDATA  (DEVDIS, ptr_dev.flags, DEV_V_DIS), REG_HRO },
     { GRDATA  (DEVADDR,   ptr_dib.ba, DEV_RDX, 32, 0), REG_HRO },
@@ -169,7 +173,11 @@ REG ptp_reg[] = {
     { FLDATAD (DONE,         ptp_csr, CSR_V_DONE,     "device done flag (CSR<7>)") },
     { FLDATAD (IE,           ptp_csr, CSR_V_IE,       "interrupt enable flag (CSR<6>)") },
     { DRDATAD (POS,     ptp_unit.pos, T_ADDR_W,       "position in the output file"), PV_LEFT },
+#ifdef REAL_PC05
     { DRDATAD (TIME,   ptp_unit.wait, 24,             "time from I/O initiation to interrupt"), PV_LEFT },
+#else
+    { DRDATAD (TIME,   ptp_unit.wait, 24,             "time from I/O initiation to interrupt"), PV_LEFT },
+#endif
     { FLDATAD (STOP_IOE, ptp_stopioe, 0,              "stop on I/O error") },
     { GRDATA  (DEVADDR,   ptp_dib.ba, DEV_RDX, 32, 0), REG_HRO },
     { GRDATA  (DEVVEC,   ptp_dib.vec, DEV_RDX, 16, 0), REG_HRO },
@@ -594,7 +602,7 @@ return 0;
 int32 pc05_write (FILE *p, int32 *data, int32 *csr)
 {
 int32 i = 0, fd = p->_fileno;
-unsigned char cmd[2] = { 'P', }, res[2];
+unsigned char cmd[2] = { 'P', 0 }, res[2];
 
 cmd[2] = *data & 0xFF;			/* Punch 1 frame */
 if (write(fd, cmd, 2) != 2 ||		/* Send command packet */
