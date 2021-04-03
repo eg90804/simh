@@ -45,8 +45,8 @@ t_stat daz_boot(int32 unit, DEVICE *dptr);
 t_stat daz_help (FILE *st, DEVICE *dptr, UNIT *uptr, int32 flag, const char *cptr);
 const char *daz_description (DEVICE *dptr);
 
-static int devadd = 0;
-static int buttons[4] = { ~0, ~0, ~0, ~0 };
+static uint16 devadd = 0;
+static uint16 buttons[4] = { 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF };
 
 #define IOLN_DAZ  4
 DIB daz_dib = {
@@ -154,6 +154,10 @@ int daz_keyboard (SIM_KEY_EVENT *kev)
   case SIM_KEY_N: n = 3; mask = TURN_RIGHT; break;
   case SIM_KEY_M: n = 3; mask = FIRE; break;
   case SIM_KEY_COMMA: n = 3; mask = PASS; break;
+  case SIM_KEY_F11:
+    if (kev->state == SIM_KEYPRESS_UP)
+      vid_set_fullscreen (!vid_is_fullscreen ());
+    return 0;
   default: return 0;
   }
 

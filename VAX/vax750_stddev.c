@@ -60,7 +60,6 @@
 
 #include "vax_defs.h"
 #include "sim_tmxr.h"
-#include <time.h>
 
 #include "pdp11_td.h"
 
@@ -223,8 +222,8 @@ extern int32 con_halt (int32 code, int32 cc);
 UNIT tti_unit = { UDATA (&tti_svc, UNIT_IDLE|TT_MODE_8B, 0), TMLN_SPD_9600_BPS };
 
 REG tti_reg[] = {
-    { HRDATAD (RXDB,       tti_buf,         16, "last data item processed") },
-    { HRDATAD (RXCS,       tti_csr,         16, "control/status register") },
+    { HRDATADF (RXDB,      tti_buf,         16, "last data item processed", rx_csr_bits) },
+    { HRDATADF (RXCS,      tti_csr,         16, "control/status register",  rx_buf_bits) },
     { FLDATAD (INT,        tti_int,          0, "interrupt pending flag") },
     { FLDATAD (DONE,       tti_csr, CSR_V_DONE, "device done flag (CSR<7>)") },
     { FLDATAD (IE,         tti_csr,   CSR_V_IE, "interrupt enable flag (CSR<6>)") },
@@ -258,8 +257,8 @@ DEVICE tti_dev = {
 UNIT tto_unit = { UDATA (&tto_svc, TT_MODE_8B, 0), SERIAL_OUT_WAIT };
 
 REG tto_reg[] = {
-    { HRDATAD (TXDB,       tto_buf,         16, "last data item processed") },
-    { HRDATAD (TXCS,       tto_csr,         16, "control/status register") },
+    { HRDATADF (TXDB,      tto_buf,         16, "last data item processed", tx_buf_bits) },
+    { HRDATADF (TXCS,      tto_csr,         16, "control/status register",  tx_csr_bits) },
     { FLDATAD (INT,        tto_int,          0, "interrupt pending flag") },
     { FLDATAD (DONE,       tto_csr, CSR_V_DONE, "device done flag (CSR<7>)") },
     { FLDATAD (IE,         tto_csr,   CSR_V_IE, "interrupt enable flag (CSR<6>)") },
@@ -379,8 +378,6 @@ REG td_reg[] = {
     { DRDATAD (STIME,  td_regval,24, "seek, per block"), PV_LEFT },
     { DRDATAD (XTIME,  td_regval,24, "tr set time"), PV_LEFT },
     { DRDATAD (ITIME,  td_regval,24, "init time"), PV_LEFT },
-    { BRDATAD (IBUF,   &td_regval,16, 8, 512, "input buffer"), },
-    { BRDATAD (OBUF,   &td_regval,16, 8, 512, "output buffer"), },
     { NULL }
     };
 
@@ -663,7 +660,7 @@ if ((val & TMR_CSR_RUN) == 0) {                         /* clearing run? */
     sim_cancel (&tmr_unit);                             /* cancel timer */
     }
 if ((tmr_iccs & CSR_DONE) && (val & CSR_DONE) &&        /* Interrupt Acked? */
-    (10000 == (tmr_nicr) ? (~tmr_nicr + 1) : 0xFFFFFFFF))/* of 10ms tick */
+    (10000 == (tmr_nicr ? (~tmr_nicr + 1) : 0xFFFFFFFF)))/* of 10ms tick */
     sim_rtcn_tick_ack (20, TMR_CLK);                    /* Let timers know */
 tmr_iccs = tmr_iccs & ~(val & TMR_CSR_W1C);             /* W1C csr */
 tmr_iccs = (tmr_iccs & ~TMR_CSR_WR) |                   /* new r/w */
@@ -933,7 +930,7 @@ base.tv_sec = (time_t)toy->toy_gmtbase;
 base.tv_nsec = toy->toy_gmtbasemsec * 1000000;
 sim_timespec_diff (&val, &now, &base);                  /* val = now - base */
 sim_debug (TMR_DB_TODR, &clk_dev, "todr_rd() - TODR=0x%X - %s\n", (int32)(val.tv_sec*100 + val.tv_nsec/10000000), todr_fmt_vms_todr ((int32)(val.tv_sec*100 + val.tv_nsec/10000000)));
-return (int32)(val.tv_sec*100 + val.tv_nsec/10000000);  /* 100hz Clock Ticks */
+return (int32)(val.tv_sec*100 + (val.tv_nsec + 5000000)/10000000);  /* 100hz Clock rounded Ticks */
 }
 
 void todr_wr (int32 data)
@@ -951,7 +948,12 @@ val.tv_nsec = (((uint32)data) % 100) * 10000000;
 sim_timespec_diff (&base, &now, &val);                  /* base = now - data */
 toy->toy_gmtbase = (uint32)base.tv_sec;
 tbase = (time_t)base.tv_sec;
-toy->toy_gmtbasemsec = base.tv_nsec/1000000;
+toy->toy_gmtbasemsec = (base.tv_nsec + 500000)/1000000;
+if (clk_unit.flags & UNIT_ATT) {                        /* OS Agnostic mode? */
+    rewind (clk_unit.fileref);
+    fwrite (toy, sizeof (*toy), 1, clk_unit.fileref);   /* Save sync time info */
+    fflush (clk_unit.fileref);
+    }
 sim_debug (TMR_DB_TODR, &clk_dev, "todr_wr(0x%X) - %s - GMTBASE=%8.8s.%03d\n", data, todr_fmt_vms_todr (data), 11+ctime(&tbase), (int)(base.tv_nsec/1000000));
 }
 
@@ -981,7 +983,7 @@ else {                                                  /* Not-Attached means */
             ctm->tm_min) * 60) +
             ctm->tm_sec;
     todr_wr ((base * 100) + 0x10000000 +                /* use VMS form */
-             (int32)(now.tv_nsec / 10000000));
+             (int32)((now.tv_nsec + 5000000)/ 10000000));
     }
 return SCPE_OK;
 }

@@ -125,7 +125,11 @@ struct color color_p29 = { p29, ELEMENTS(p29), 25000 };
 
 /* green phosphor for Tek 611 */
 static struct phosphor p31[] = {{0.0, 1.0, 0.77, 0.5, .1}};
-struct color color_p31 = { p31, ELEMENTS(p31), 25000 };
+struct color color_p31 = { p31, ELEMENTS(p31), 100000 };
+
+/* green phosphor for III */
+static struct phosphor p39[] = {{0.2, 1.0, 0.0, 0.5, 0.01}};
+struct color color_p39 = { p39, ELEMENTS(p39), 20000 };
 
 static struct phosphor p40[] = {
     /* P40 blue-white spot with yellow-green decay (.045s to 10%?) */
@@ -241,7 +245,29 @@ static struct display displays[] = {
      * 512x512, out of 800x600
      * 0,0 at middle
      */
-    { DIS_NG, "NG Display", &color_p31, NULL, 512, 512 }
+    { DIS_NG, "NG Display", &color_p31, NULL, 512, 512 },
+
+    /*
+     * III display
+     * on PDP-10
+     */
+    { DIS_III, "III Display", &color_p39, NULL, 1024, 1024 },
+
+    /*
+     * Imlac display
+     * 1024x1024 addressable points.
+     * P31 phosphor according to "Heads-Up Display for Flight
+     * Simulator for Advanced Aircraft"
+     */
+    { DIS_IMLAC, "Imlac Display", &color_p31, NULL, 1024, 1024 },
+
+    /*
+     * TT2500 display
+     * 512x512 addressable points.
+     * P31 phosphor according to "Heads-Up Display for Flight
+     * Simulator for Advanced Aircraft"
+     */
+    { DIS_TT2500, "TT2500 Display", &color_p31, NULL, 512, 512 }
 };
 
 /*
@@ -359,6 +385,7 @@ static long queue_interval;
 #define Y(P) (((P) - points) / xpixels)
 
 static int initialized = 0;
+static void *device = NULL;  /* Current display device. */
 
 /*
  * global set by O/S display level to indicate "light pen tip switch activated"
@@ -782,6 +809,72 @@ display_point(int x,        /* 0..xpixels (unscaled) */
     return lx*lx + ly*ly <= scaled_pen_radius_squared;
 } /* display_point */
 
+#define ABS(_X) ((_X) >= 0 ? (_X) : -(_X))
+#define SIGN(_X) ((_X) >= 0 ? 1 : -1)
+
+static void
+xline (int x, int y, int x2, int dx, int dy, int level)
+{
+    int ix = SIGN(dx);
+    int iy = SIGN(dy);
+    int ay;
+
+    dx = ABS(dx);
+    dy = ABS(dy);
+
+    ay = dy/2;
+    for (;;) {
+        display_point (x, y, level, 0);
+        if (x == x2)
+            break;
+        if (ay > 0) {
+            y += iy;
+            ay -= dx;
+        }
+        ay += dy;
+        x += ix;
+    }
+}
+  
+static void
+yline (int x, int y, int y2, int dx, int dy, int level)
+{
+    int ix = SIGN(dx);
+    int iy = SIGN(dy);
+    int ax;
+
+    dx = ABS(dx);
+    dy = ABS(dy);
+
+    ax = dx/2;
+    for (;;) {
+        display_point (x, y, level, 0);
+        if (y == y2)
+            break;
+        if (ax > 0) {
+            x += ix;
+            ax -= dy;
+        }
+        ax += dx;
+        y += iy;
+    }
+}
+
+void
+display_line(int x1,        /* 0..xpixels (unscaled) */
+          int y1,           /* 0..ypixels (unscaled) */
+          int x2,           /* 0..xpixels (unscaled) */
+          int y2,           /* 0..ypixels (unscaled) */
+          int level)        /* DISPLAY_INT_xxx */
+{
+    int dx = x2 - x1;
+    int dy = y2 - y1;
+    if (ABS (dx) > ABS(dy))
+        xline (x1, y1, x2, dx, dy, level);
+    else
+        yline (x1, y1, y2, dx, dy, level);
+} /* display_line */
+
 /*
  * calculate decay color table for a phosphor mixture
  * must be called AFTER refresh_rate initialized!
@@ -969,6 +1062,7 @@ display_init(enum display_type type, int sf, void *dptr)
 
     initialized = 1;
     init_failed = 0;            /* hey, we made it! */
+    device = dptr;
     return 1;
 
  failed:
@@ -982,10 +1076,14 @@ display_close(void *dptr)
     if (!initialized)
         return;
 
+    if (device != dptr)
+        return;
+
     free (points);
     ws_shutdown();
 
     initialized = 0;
+    device = NULL;
 }
 
 void

@@ -42,13 +42,16 @@ enum display_type {
      * of the PDP-1, and thus all DEC machines.
      */
     DIS_TX0 = 0,
+    DIS_IMLAC = 1,
     DIS_VR14 = 14,
     DIS_VR17 = 17,
     DIS_VR20 = 20,
     DIS_TYPE30 = 30,
     DIS_VR48 = 48,
+    DIS_III = 111,
     DIS_TYPE340 = 340,
     DIS_NG = 999,
+    DIS_TT2500 = 2500,
 };
 
 /*
@@ -108,6 +111,13 @@ extern int display_is_blank(void);
  * Display initialized on first call.
  */
 extern int display_point(int,int,int,int);
+
+/*
+ * plot a line; arguments are start and end x, y, intensity
+ *
+ * Display initialized on first call.
+ */
+extern void display_line(int,int,int,int,int);
 
 /*
  * force window system to output bits to screen;

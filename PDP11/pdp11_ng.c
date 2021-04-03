@@ -63,8 +63,8 @@ UNIT ng_unit = {
 
 REG ng_reg[] = {
   { DRDATAD (CYCLE, ng_unit.wait, 24, "NG cycle"), REG_NZ + PV_LEFT },
-  { GRDATAD(TYPE, ng_type, 16, 16, 0, "Hardware type"), REG_FIT},
-  { GRDATAD(SCALE, ng_scale, 16, 16, 0, "Pixel Scale Factor"), REG_FIT},
+  { GRDATAD(TYPE, ng_type, 16, 32, 0, "Hardware type"), 0},
+  { GRDATAD(SCALE, ng_scale, 16, 32, 0, "Pixel Scale Factor"), 0},
   { NULL }
 };
 
@@ -234,9 +234,9 @@ ng_set_type(UNIT *uptr, int32 val, CONST char *cptr, void *desc)
 {
   //if ((uptr->flags & DEV_DIS) == 0)
   //return SCPE_ALATT;
-  if (strcasecmp (cptr, "dazzle") == 0)
+  if (MATCH_CMD (cptr, "DAZZLE"))
     ng_type = TYPE_DAZZLE;
-  else if (strcasecmp (cptr, "logo") == 0)
+  else if (MATCH_CMD (cptr, "LOGO"))
     ng_type = TYPE_LOGO;
   else
     return SCPE_ARG;

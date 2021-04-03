@@ -82,7 +82,7 @@ DIB   mt_dib = { CH_TYP_PIO, NUM_UNITS_MT, 0400, 07770, &mt_cmd, &mt_ini };
 
 
 /* Simulator stop codes */
-const char         *sim_stop_messages[] = {
+const char         *sim_stop_messages[SCPE_BASE] = {
     "Unknown error",
     "IO device not ready",
     "HALT instruction",
@@ -398,7 +398,6 @@ t_stat
 parse_sym(CONST char *cptr, t_addr addr, UNIT * uptr, t_value * val, int32 sw)
 {
     int                 i;
-    int                 f;
     t_value             d;
     t_addr              tag;
     int                 sign;
@@ -413,7 +412,6 @@ parse_sym(CONST char *cptr, t_addr addr, UNIT * uptr, t_value * val, int32 sw)
 
         i = 0;
         sign = 0;
-        f = 0;
 next:
         /* Skip blanks */
         while (isspace(*cptr))

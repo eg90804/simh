@@ -53,7 +53,6 @@
 #include "besm6_defs.h"
 #include <math.h>
 #include <float.h>
-#include <time.h>
 
 
 t_value memory [MEMSIZE];
@@ -74,7 +73,7 @@ int32 tmr_poll = CLK_DELAY;             /* pgm timer poll */
                         GRP_CHAN5_FREE | GRP_CHAN6_FREE |\
                         GRP_CHAN7_FREE )
 
-#define PRP_WIRED_BITS (PRP_UVVK1_END | PRP_UVVK2_END |\
+#define PRP_WIRED_BITS (PRP_VU1_END | PRP_VU2_END |\
                         PRP_PCARD1_PUNCH | PRP_PCARD2_PUNCH |\
                         PRP_PTAPE1_PUNCH | PRP_PTAPE2_PUNCH )
 
@@ -279,12 +278,14 @@ DEVICE *sim_devices[] = {
     &clock_dev,
     &printer_dev,
     &fs_dev,
+    &pl_dev,
+    &vu_dev,
     &pi_dev,
     &tty_dev,       /* терминалы - телетайпы, видеотоны, "Консулы" */
     0
 };
 
-const char *sim_stop_messages[] = {
+const char *sim_stop_messages[SCPE_BASE] = {
     "Неизвестная ошибка",                 /* Unknown error */
     "Останов",                            /* STOP */
     "Точка останова",                     /* Emulator breakpoint */
@@ -362,7 +363,7 @@ t_stat cpu_reset (DEVICE *dptr)
         M[i] = 0;
 
     /* Punchcard readers not yet implemented thus not ready */
-    READY2 |= 042000000;
+    /* READY2 |= 042000000; */
 
     /* Регистр 17: БлП, БлЗ, ПОП, ПОК, БлПр */
     M[PSW] = PSW_MMAP_DISABLE | PSW_PROT_DISABLE | PSW_INTR_HALT |
@@ -638,8 +639,8 @@ static void cmd_033 ()
          */
         break;
     case 0150: case 0151:
-        /* TODO: reading from punchcards */
-        longjmp (cpu_halt, STOP_UNIMPLEMENTED);
+        /* sending commands to the punched card readers */
+        vu_control (Aex - 0150, (uint32) (ACC & 017));
         break;
     case 0153:
         /* гашение аппаратуры сопряжения с терминалами */
@@ -658,8 +659,11 @@ static void cmd_033 ()
         pi_write (Aex & 7, (uint32) ACC & BITS(20));
         break;
     case 0170: case 0171:
-        /* TODO: пробивка строки на перфоленте */
-        longjmp (cpu_halt, STOP_UNIMPLEMENTED);
+        /* пробивка строки на перфоленте */
+        pl_control (Aex & 1, (uint32) ACC & BITS(8));
+        break;
+    case 0172: case 0173:
+        besm6_debug(">>> Potential plotter output: %03o", (uint32) ACC & BITS(8));
         break;
     case 0174: case 0175:
         /* Выдача кода в пульт оператора */
@@ -741,6 +745,10 @@ static void cmd_033 ()
          * группами по 8 штук каждые несколько секунд. */
         ACC = 0;
         break;
+    case 04150: case 04154:
+        /* считывание строки с устройства ввода с перфоленты */
+        ACC = vu_read ((Aex - 04150) >> 2);
+        break;
     case 04160: case 04161: case 04162: case 04163:
     case 04164: case 04165: case 04166: case 04167:
         /* Punchcard output: reading a punched line for checking, 20 bit at a time */
@@ -819,7 +827,7 @@ void check_initial_setup ()
         /* Яч. ГОД обновляем самостоятельно */
         time_t t;
         t_value date;
-        time(&t);
+        sim_get_time(&t);
         d = localtime(&t);
         ++d->tm_mon;
         date = (t_value) (d->tm_mday / 10) << 33 |
